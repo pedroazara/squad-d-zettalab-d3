@@ -1,0 +1,20 @@
+﻿# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+.venv/
+
+# Dados brutos
+data/raw/*
+!data/raw/.gitkeep
+
+# Node
+node_modules/
+dist/
+
+# Sistema
+.DS_Store
+*.log
+Thumbs.db
