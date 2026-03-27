@@ -41,31 +41,6 @@ Angular foi definido como tecnologia oficial do frontend por quatro motivos prin
 3. Excelente suporte a formularios, roteamento e organizacao corporativa.
 4. Facilidade para evoluir o projeto para dashboards, modulos geoespaciais e areas autenticadas.
 
-## 5. Estrutura arquitetural adotada
-
-O frontend foi organizado por responsabilidade:
-
-```text
-web/src/app/
-  core/
-    auth/
-      auth.guard.ts
-      auth.models.ts
-      auth.service.ts
-  features/
-    auth/
-      login-page.ts
-      register-page.ts
-    dashboard/
-      dashboard-page.ts
-    home/
-      home-page.ts
-  shared/
-    components/
-      site-footer/
-      site-header/
-```
-
 ### Principios usados
 
 - `core`: servicos e regras transversais
@@ -73,7 +48,7 @@ web/src/app/
 - `features`: paginas e fluxos orientados ao dominio
 - rotas lazy-loaded para reduzir acoplamento e facilitar crescimento
 
-## 6. Design system inicial
+## 5. Design system inicial
 
 Direcao criativa adotada: **Tactical Prestige / The Guardian's Sentinel**
 
@@ -83,7 +58,6 @@ Direcao criativa adotada: **Tactical Prestige / The Guardian's Sentinel**
 - azul profundo como base institucional
 - laranja de alerta como cor de acao
 - superficies em camadas no lugar de divisorias tradicionais
-- assimetria proposital para evitar visual de template
 
 ### Tipografia
 
@@ -97,16 +71,6 @@ Direcao criativa adotada: **Tactical Prestige / The Guardian's Sentinel**
 - `primary-container`: azul institucional
 - `secondary-container`: laranja de acao
 - `outline-ghost`: separacao suave de baixa opacidade
-
-## 7. Escopo implementado nesta semana
-
-- aplicacao Angular criada em `web/`
-- landing page inicial com identidade visual propria
-- header e footer reutilizaveis
-- paginas de login e cadastro
-- guard para rota protegida
-- painel inicial autenticado
-- documentacao tecnica inicial do frontend
 
 ## 8. Estrategia de autenticacao nesta fase
 
@@ -125,7 +89,7 @@ Como o backend ainda nao possui endpoints de autenticacao, foi adotado um fluxo 
 - senhas nao estao tratadas com padroes de seguranca reais
 - o fluxo existe apenas para aceleracao de desenvolvimento
 
-## 9. Integracao prevista para a proxima sprint
+## 9. Integracao prevista 
 
 ### Curto prazo
 
