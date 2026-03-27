@@ -8,12 +8,21 @@
   border-radius: 1.75rem;
 }
 
+<<<<<<< HEAD
 //.about__hero::after {
 //  content: '';
 //  position: absolute;
 //  inset: 0;
 //  background: linear-gradient(180deg, transparent 25%, rgba(72, 105, 137, 0.58) 100%);
 //}
+=======
+.about__hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 25%, rgba(9, 16, 23, 0.92) 100%);
+}
+>>>>>>> ac99b46 (feat: Teste para pagina inicial e prototipos)
 
 .about__hero-media,
 .about__hero-media img {
@@ -23,7 +32,13 @@
   height: 100%;
 }
 
+<<<<<<< HEAD
 
+=======
+.about__hero-media img {
+  filter: brightness(0.5);
+}
+>>>>>>> ac99b46 (feat: Teste para pagina inicial e prototipos)
 
 .about__hero-copy {
   position: relative;
