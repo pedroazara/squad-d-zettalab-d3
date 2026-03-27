@@ -10,13 +10,16 @@
 }
 
 .emergency__grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(22rem, 0.9fr);
-  gap: var(--space-6);
-}
-
-.emergency__form-panel {
-  padding: 1.4rem;
+  .emergency__step-card {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-4);
+    padding: 1rem;
+    border-radius: 1rem;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 40%), #fff;
+    box-shadow: 0 1px 4px 0 rgba(183, 194, 207, 0.08);
+  }
 }
 
 .emergency__form {
@@ -68,27 +71,24 @@
 
 .emergency__steps,
 .emergency__map-card,
+  .emergency__step-card {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-4);
+    padding: 1rem;
+    border-radius: 1rem;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 40%), #fff;
+    box-shadow: 0 1px 4px 0 rgba(183, 194, 207, 0.08);
+}
+
 .emergency__info-card {
   padding: 1.3rem;
-}
-
-.emergency__step-list {
-  display: grid;
-  gap: var(--space-4);
-  margin-top: var(--space-6);
-}
-
-.emergency__step-card {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--space-4);
-  padding: 1rem;
-  border-radius: 1rem;
+  min-height: 14rem;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 40%), rgba(12, 18, 24, 0.88);
-  box-shadow: inset 0 0 0 1px rgba(183, 194, 207, 0.08);
+    linear-gradient(180deg, rgba(170, 103, 103, 0.555), transparent 40%), #fff;
+  box-shadow: 0 1px 4px 0 rgba(183, 194, 207, 0.08);
 }
-
 .emergency__step-index {
   display: inline-flex;
   align-items: center;
@@ -96,7 +96,7 @@
   width: 2rem;
   height: 2rem;
   border-radius: 999px;
-  background: rgba(240, 138, 55, 0.16);
+  background: rgba(240, 138, 55, 0.608);
   color: var(--secondary);
   font-family: 'Space Grotesk', sans-serif;
   font-weight: 700;
