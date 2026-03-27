@@ -1,0 +1,93 @@
+<section class="auth-page page-width">
+  <div class="auth-page__grid">
+    <div class="auth-page__content">
+      <span class="eyebrow">Acesso de operacao</span>
+      <h1 class="section-title">Entre no centro de comando piloto.</h1>
+      <p class="section-copy">
+        Este login funciona em modo demo local para que o time ja consiga validar fluxo, navegacao e
+        organizacao do frontend antes da integracao com o backend.
+      </p>
+
+      <div class="auth-page__highlights">
+        <article class="glass-panel auth-page__highlight">
+          <strong>Fluxo desacoplado</strong>
+          <p>Sem dependencia de API nesta entrega inicial.</p>
+        </article>
+
+        <article class="glass-panel auth-page__highlight">
+          <strong>Base para evolucao</strong>
+          <p>Preparado para trocar o mock por autenticacao real na proxima sprint.</p>
+        </article>
+      </div>
+    </div>
+
+    <div class="auth-page__panel watermark-card">
+      <span class="eyebrow">Entrar</span>
+      <h2>Identificacao tatica</h2>
+      <p class="section-copy">
+        Voce pode usar um acesso demo fixo agora mesmo ou criar uma nova credencial local para
+        validar o fluxo.
+      </p>
+
+      <div class="auth-page__demo">
+        <div class="auth-page__demo-header">
+          <strong>Acessos demo</strong>
+          <span class="muted-label">Clique para preencher automaticamente.</span>
+        </div>
+
+        <div class="auth-page__demo-grid">
+          @for (credential of demoCredentials; track credential.email) {
+            <button
+              class="auth-page__demo-card"
+              type="button"
+              (click)="fillDemoCredential(credential.email, credential.password)"
+            >
+              <span class="status-pill">{{ credential.label }}</span>
+              <strong>{{ credential.email }}</strong>
+              <small>Senha: {{ credential.password }}</small>
+            </button>
+          }
+        </div>
+      </div>
+
+      @if (errorMessage()) {
+        <div class="feedback feedback--error">{{ errorMessage() }}</div>
+      }
+
+      <form class="auth-form" [formGroup]="form" (ngSubmit)="submit()">
+        <label class="field">
+          <span class="field__label">E-mail</span>
+          <input formControlName="email" type="email" placeholder="comando@cerradoforca.org" />
+          @if (hasError('email', 'required')) {
+            <span class="field__error">Informe o e-mail do responsavel.</span>
+          }
+          @if (hasError('email', 'email')) {
+            <span class="field__error">Use um e-mail valido.</span>
+          }
+        </label>
+
+        <label class="field">
+          <span class="field__label">Senha</span>
+          <input formControlName="password" type="password" placeholder="Minimo de 6 caracteres" />
+          @if (hasError('password', 'required')) {
+            <span class="field__error">Informe a senha cadastrada.</span>
+          }
+          @if (hasError('password', 'minlength')) {
+            <span class="field__error">A senha precisa ter pelo menos 6 caracteres.</span>
+          }
+        </label>
+
+        <button class="tactical-button tactical-button--secondary" type="submit">
+          Entrar no painel
+        </button>
+      </form>
+
+      <p class="auth-page__support">
+        Ainda sem acesso?
+        <a routerLink="/cadastro">Criar credencial demo</a>
+      </p>
+    </div>
+  </div>
+</section>
+
+<app-site-footer />

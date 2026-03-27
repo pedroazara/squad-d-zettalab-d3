@@ -1,0 +1,148 @@
+<section class="page-stack page-width home">
+  <div class="feedback feedback--success home__signal">
+    Prototipos convertidos para uma base Angular integrada, pronta para seguir evoluindo sem perder
+    a unidade visual do sistema.
+  </div>
+
+  <section class="home__hero">
+    <div class="home__hero-copy">
+      <span class="eyebrow">Guardian Alliance | Centro tatico do Cerrado</span>
+      <h1 class="section-title">
+        Proteja o Cerrado.
+        <span>Aja antes do fogo.</span>
+      </h1>
+      <p class="section-copy">
+        A Cerrado-Forca organiza monitoramento, protocolos de prevencao, resposta emergencial e
+        resgate de fauna em uma experiencia digital unica, mais clara e pronta para crescer com o
+        projeto.
+      </p>
+
+      <div class="home__hero-actions">
+        <a class="tactical-button tactical-button--secondary" routerLink="/emergencia">
+          <span class="material-symbols-outlined">local_fire_department</span>
+          Alerta imediato
+        </a>
+        <a class="tactical-button tactical-button--ghost" routerLink="/prevencao">
+          Conhecer protocolos
+        </a>
+      </div>
+
+      <div class="home__hero-pills">
+        <span class="status-pill">Monitoramento e resposta</span>
+        <span class="status-pill">Design inspirado em Material 3</span>
+        <span class="status-pill">Base Angular escalavel</span>
+      </div>
+    </div>
+
+    <aside class="home__hero-panel glass-panel">
+      <div class="home__hero-media media-frame">
+        <img
+          src="https://lh3.googleusercontent.com/aida-public/AB6AXuDKL_xxY0p4pIXZ2ts8l8hPl_stVJE5G80JyotV8GVK6N3oFi2v9v2NL6i7ZjOjKW9QJ0cPkIjQC_TUUV4gyHCDAszth8dl8hB9jdp1EZZQQx2ASh-xu9buMMynvZzWsP85E7NZaP-REQWTD5IOJfAKeSqmUv4o2pNwe6Gi9IcjbjQJMHLDPrdiwqIX2AxDLiLbyHuU-t2YLD5WjnCOG0joXjCT13PlzLJU91b4EaYRZZZsZcwpeeyEA8j4tZY2inPgCPbxLpH0Mjh3"
+          alt="Onca pintada em close dramatico representando a vigilancia do Cerrado"
+        />
+      </div>
+
+      <div class="home__hero-badge">
+        <span class="status-pill">Setor Alpha ativo</span>
+        <p class="muted-label">Foco em prontidao, monitoramento e comunicacao rapida.</p>
+      </div>
+
+      <article class="watermark-card home__hero-note">
+        <p class="metric-value">01</p>
+        <p class="muted-label">
+          ecossistema digital conectando prevencao, emergencia, resgate de fauna e engajamento.
+        </p>
+      </article>
+    </aside>
+  </section>
+
+  <section class="home__mission">
+    <div class="section-heading">
+      <span class="eyebrow">Frentes centrais</span>
+      <h2>Pilares do sistema inspirados diretamente nos prototipos operacionais.</h2>
+      <p class="section-copy">
+        Cada pagina funciona como uma frente de produto: orientar, alertar, mobilizar e comunicar a
+        missao da alianca em linguagem clara.
+      </p>
+    </div>
+
+    <div class="home__mission-grid">
+      @for (action of missionActions; track action.title) {
+        <a
+          class="tonal-card interactive-card home__mission-card"
+          [class.home__mission-card--primary]="action.tone === 'primary'"
+          [class.home__mission-card--secondary]="action.tone === 'secondary'"
+          [class.home__mission-card--tertiary]="action.tone === 'tertiary'"
+          [routerLink]="action.route"
+        >
+          <span
+            class="icon-badge"
+            [class.icon-badge--secondary]="action.tone === 'secondary'"
+            [class.icon-badge--tertiary]="action.tone === 'tertiary'"
+          >
+            <span class="material-symbols-outlined">{{ action.icon }}</span>
+          </span>
+          <h3>{{ action.title }}</h3>
+          <p>{{ action.description }}</p>
+          <span class="home__mission-link">
+            Explorar
+            <span class="material-symbols-outlined">arrow_forward</span>
+          </span>
+        </a>
+      }
+
+      <article class="glass-panel home__statement">
+        <span class="eyebrow">Mission statement</span>
+        <p>
+          "Unimos a coragem dos brigadistas, a precisao do resgate de fauna e a inteligencia
+          territorial para formar um escudo ativo ao redor do Cerrado."
+        </p>
+      </article>
+    </div>
+  </section>
+
+  <section class="home__impact">
+    @for (metric of impactMetrics; track metric.label) {
+      <article
+        class="tonal-card home__metric"
+        [class.home__metric--primary]="metric.tone === 'primary'"
+        [class.home__metric--secondary]="metric.tone === 'secondary'"
+        [class.home__metric--tertiary]="metric.tone === 'tertiary'"
+      >
+        <p class="metric-value">{{ metric.value }}</p>
+        <p class="muted-label">{{ metric.label }}</p>
+      </article>
+    }
+  </section>
+
+  <section class="home__reports">
+    <div class="home__reports-header">
+      <div class="section-heading">
+        <span class="eyebrow">Acoes recentes</span>
+        <h2>Relatos que ajudam a tangibilizar a operacao.</h2>
+      </div>
+      <a class="home__reports-link" routerLink="/painel">
+        Ver painel demo
+        <span class="material-symbols-outlined">arrow_forward</span>
+      </a>
+    </div>
+
+    <div class="home__reports-grid">
+      @for (report of reports; track report.title) {
+        <a class="tonal-card interactive-card home__report-card" [routerLink]="report.route">
+          <div class="media-frame home__report-media">
+            <img [src]="report.image" [alt]="report.title" />
+          </div>
+
+          <div class="home__report-copy">
+            <span class="home__report-tag">{{ report.location }}</span>
+            <h3>{{ report.title }}</h3>
+            <p>{{ report.description }}</p>
+          </div>
+        </a>
+      }
+    </div>
+  </section>
+</section>
+
+<app-site-footer />

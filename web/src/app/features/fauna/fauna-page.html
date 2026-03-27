@@ -1,0 +1,160 @@
+<section class="page-stack page-width fauna">
+  <header class="fauna__hero">
+    <div class="fauna__hero-media media-frame">
+      <img
+        src="https://lh3.googleusercontent.com/aida-public/AB6AXuD5xtx7YHcdTGOiU31IE0cmAs50ClVDZoLoCbE_OczJQ0oRyLmGxTxP2GYUy2-oesaq7WFe5yOJTzjGe19eAY9Ql0rPgOl3KFYdd82JFqJUY8PucYy_uKxuktuopl83Hbk0K0ZdRkwNAVRjWVkUqJ-5FPKfjE9n3hCR1XN-Pl2yySaNloHt2uYZ3waR-HLlB2eCW8TjF8ZTYPQwXy0Kl8vtNlfqfdoMd_lmCKwiGpknDCFROSbINfatK5k34D-IBsvfVUOD9H8bozJP"
+        alt="Onca pintada no Cerrado representando a vigilancia do ecossistema"
+      />
+    </div>
+
+    <div class="fauna__hero-copy">
+      <span class="eyebrow">Fauna e resgate</span>
+      <h1 class="section-title">
+        A sentinela do Cerrado
+        <span>sob nossa protecao.</span>
+      </h1>
+      <p class="section-copy">
+        A onca e um simbolo de equilibrio ecologico. Quando o fogo sobe, a plataforma precisa
+        comunicar risco, orientar cuidado e abrir caminho para missao de resgate com clareza.
+      </p>
+      <a class="tactical-button tactical-button--secondary" routerLink="/participar">
+        Adotar um setor
+        <span class="material-symbols-outlined">arrow_forward</span>
+      </a>
+    </div>
+  </header>
+
+  <section class="fauna__impact">
+    <div class="fauna__impact-copy">
+      <div class="section-heading">
+        <span class="eyebrow">Biodiversidade sob risco</span>
+        <h2>
+          O fogo nao atinge so a paisagem. Ele desorganiza corredores, abrigo e cadeia de cuidado.
+        </h2>
+      </div>
+
+      <div class="fauna__threat-list">
+        @for (threat of threats; track threat.title) {
+          <article class="tonal-card fauna__threat-card">
+            <span class="icon-badge icon-badge--secondary">
+              <span class="material-symbols-outlined">{{ threat.icon }}</span>
+            </span>
+            <div>
+              <h3>{{ threat.title }}</h3>
+              <p>{{ threat.description }}</p>
+            </div>
+          </article>
+        }
+      </div>
+    </div>
+
+    <article class="tonal-card fauna__impact-visual">
+      <div class="media-frame fauna__impact-media">
+        <img
+          src="https://lh3.googleusercontent.com/aida-public/AB6AXuDlOJ4sk0cvr50kaeLsyhtj--BJEZ8fzSX713M2h-WmKF7wyyIWyXDavMidzuhdY49gOuWmtD41UcLzlb1B_dSvVWm2pATqzA-rEE4Hrt1A1t4rD8mcW3DLm9ILNlh20mL_fE5Yl01tajg1EbjilnstXka1EbU4vbDQVSpgnZrFL9pDr-WGTQ4OuGdnmwCY4ZL_5kUu0mqseirTgUNCIP3AxmjK1d4kEFFmwsqK_3kY1Nn44r6AvdWTp4-uJIu8hJZDVxGvRNtvoLB0"
+          alt="Paisagem queimada do Cerrado monitorada por satelite"
+        />
+      </div>
+      <div class="fauna__impact-badge">
+        <p class="metric-value">45%</p>
+        <p class="muted-label">meta de reducao de perda de fauna em corredores monitorados</p>
+      </div>
+    </article>
+  </section>
+
+  <section class="fauna__symbol">
+    <div class="fauna__symbol-copy">
+      <div class="section-heading">
+        <span class="eyebrow">Blueprint operacional</span>
+        <h2>A onca orienta o modo como pensamos presenca, velocidade e territorio.</h2>
+      </div>
+
+      <p class="section-copy">
+        Para a Cerrado-Forca, a onca representa visao estrategica, resposta silenciosa e defesa
+        absoluta do territorio. O produto precisa carregar essa ideia em organizacao, hierarquia e
+        contundencia.
+      </p>
+
+      <div class="fauna__symbol-points">
+        <span class="status-pill">
+          <span class="material-symbols-outlined">visibility</span>
+          Visao estrategica
+        </span>
+        <span class="status-pill">
+          <span class="material-symbols-outlined">speed</span>
+          Interceptacao rapida
+        </span>
+      </div>
+    </div>
+
+    <div class="fauna__symbol-media">
+      <div class="media-frame">
+        <img
+          src="https://lh3.googleusercontent.com/aida-public/AB6AXuCKnflWtacKbv1damkSAqR3LofzfxeXXUqDWMeXDywoIhB8NuzYTHWDEuLXtZQNAQhPimltGZjNAWKR7ROYWsWezNwuNqMYRxSaDNmqJs0C2GvI9HLfYVabC5enEjhH5J5ZVRGv9YXFYYC_y1Giag_3QUUlk7Q8UC4FTKXXQxnd1zdLfkb236h-kPO6muGRgZvwdSeB-xZEjkVuROQJA-BblMvVr4LsLpUSVAcp5spQR3CWHALWncDk8CHHtrgtZhCSfU1f2F5D63ne"
+          alt="Olho de onca em close com linguagem visual de vigilancia"
+        />
+      </div>
+    </div>
+  </section>
+
+  <section class="fauna__stories">
+    <div class="fauna__stories-header">
+      <div class="section-heading">
+        <span class="eyebrow">Registros de campo</span>
+        <h2>Extracoes recentes e frente de cuidado em destaque.</h2>
+      </div>
+      <a class="fauna__stories-link" routerLink="/painel">
+        Abrir painel
+        <span class="material-symbols-outlined">arrow_forward</span>
+      </a>
+    </div>
+
+    <div class="fauna__stories-grid">
+      @for (story of rescueStories; track story.title) {
+        <article
+          class="tonal-card fauna__story-card"
+          [class.fauna__story-card--primary]="story.tone === 'primary'"
+          [class.fauna__story-card--tertiary]="story.tone === 'tertiary'"
+        >
+          <div class="media-frame fauna__story-media">
+            <img [src]="story.image" [alt]="story.title" />
+          </div>
+          <div class="fauna__story-copy">
+            <span class="status-pill">{{ story.tag }}</span>
+            <h3>{{ story.title }}</h3>
+            <p>{{ story.description }}</p>
+          </div>
+        </article>
+      }
+
+      <article class="tonal-card tonal-card--primary fauna__support-card">
+        <span class="icon-badge icon-badge--secondary">
+          <span class="material-symbols-outlined">volunteer_activism</span>
+        </span>
+        <h3>Apoie medicos e frentes de resgate em campo.</h3>
+        <p>
+          Cada missao demanda deslocamento, insumos clinicos e equipamento para localizacao e
+          extracao.
+        </p>
+        <a class="tactical-button tactical-button--primary" routerLink="/participar">
+          Fortalecer a frente
+        </a>
+      </article>
+    </div>
+  </section>
+
+  <aside class="fauna__banner">
+    <div>
+      <span class="eyebrow">Alerta de fauna</span>
+      <p>
+        Se houver animal ferido ou acuado por incendio, acione o protocolo emergencial
+        imediatamente.
+      </p>
+    </div>
+    <a class="tactical-button tactical-button--secondary" routerLink="/emergencia"
+      >Reportar agora</a
+    >
+  </aside>
+</section>
+
+<app-site-footer />

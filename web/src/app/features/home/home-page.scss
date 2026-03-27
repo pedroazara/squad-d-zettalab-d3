@@ -1,0 +1,240 @@
+.home {
+  position: relative;
+}
+
+.home__signal {
+  max-width: 62rem;
+}
+
+.home__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(22rem, 0.85fr);
+  gap: var(--space-8);
+  align-items: center;
+}
+
+.home__hero-copy {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.home__hero-copy .section-title {
+  max-width: 10ch;
+}
+
+.home__hero-copy .section-title span {
+  display: block;
+  color: var(--secondary);
+}
+
+.home__hero-actions,
+.home__hero-pills {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.home__hero-panel {
+  display: grid;
+  gap: var(--space-4);
+  padding: 1.25rem;
+}
+
+.home__hero-media {
+  aspect-ratio: 1 / 1;
+  border-radius: 1.5rem;
+}
+
+.home__hero-badge {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.home__hero-note {
+  padding: 1.2rem;
+  background:
+    linear-gradient(160deg, rgba(23, 75, 115, 0.28), rgba(240, 138, 55, 0.12)),
+    rgba(27, 38, 49, 0.9);
+}
+
+.home__mission {
+  display: grid;
+  gap: var(--space-8);
+}
+
+.home__mission-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.home__mission-card,
+.home__statement {
+  display: grid;
+  gap: var(--space-4);
+  min-height: 16rem;
+  padding: 1.4rem;
+}
+
+.home__mission-card {
+  grid-column: span 3;
+}
+
+.home__mission-card--primary {
+  background:
+    linear-gradient(145deg, rgba(23, 75, 115, 0.22), transparent 38%), rgba(27, 38, 49, 0.88);
+}
+
+.home__mission-card--secondary {
+  background:
+    linear-gradient(145deg, rgba(240, 138, 55, 0.22), transparent 38%), rgba(27, 38, 49, 0.88);
+}
+
+.home__mission-card--tertiary {
+  background:
+    linear-gradient(145deg, rgba(142, 217, 194, 0.18), transparent 38%), rgba(20, 29, 38, 0.92);
+}
+
+.home__mission-card h3,
+.home__report-copy h3 {
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.4rem;
+  letter-spacing: -0.03em;
+}
+
+.home__mission-card p,
+.home__report-copy p {
+  margin: 0;
+  color: var(--on-surface-variant);
+  line-height: 1.7;
+}
+
+.home__mission-link,
+.home__reports-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: fit-content;
+  margin-top: auto;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.home__statement {
+  grid-column: span 6;
+  justify-content: end;
+  background:
+    linear-gradient(145deg, rgba(240, 138, 55, 0.08), transparent 36%), rgba(16, 23, 32, 0.82);
+}
+
+.home__statement p {
+  margin: 0;
+  max-width: 24ch;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(1.6rem, 2.4vw, 2.2rem);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
+.home__impact {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.home__metric {
+  min-height: 12.5rem;
+  padding: 1.35rem;
+}
+
+.home__metric--primary {
+  background:
+    linear-gradient(145deg, rgba(23, 75, 115, 0.3), transparent 40%), rgba(27, 38, 49, 0.88);
+}
+
+.home__metric--secondary {
+  background:
+    linear-gradient(145deg, rgba(240, 138, 55, 0.24), transparent 40%), rgba(27, 38, 49, 0.88);
+}
+
+.home__metric--tertiary {
+  background:
+    linear-gradient(145deg, rgba(142, 217, 194, 0.2), transparent 40%), rgba(20, 29, 38, 0.92);
+}
+
+.home__reports {
+  display: grid;
+  gap: var(--space-8);
+}
+
+.home__reports-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.home__reports-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.home__report-card {
+  display: grid;
+  grid-template-columns: 13rem 1fr;
+  gap: var(--space-5);
+  padding: 1rem;
+}
+
+.home__report-media {
+  min-height: 100%;
+}
+
+.home__report-copy {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  padding: 0.35rem 0;
+}
+
+.home__report-tag {
+  color: var(--secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1080px) {
+  .home__hero,
+  .home__reports-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home__mission-card {
+    grid-column: span 6;
+  }
+
+  .home__statement {
+    grid-column: span 12;
+  }
+}
+
+@media (max-width: 760px) {
+  .home__mission-grid,
+  .home__impact {
+    grid-template-columns: 1fr;
+  }
+
+  .home__mission-card,
+  .home__statement {
+    grid-column: auto;
+  }
+
+  .home__report-card {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,128 @@
+<section class="page-stack page-width emergency">
+  <header class="emergency__header">
+    <span class="eyebrow">Protocolo de emergencia ativo</span>
+    <h1 class="section-title">
+      Reportar incendio
+      <span>agora.</span>
+    </h1>
+    <p class="section-copy">
+      Esta pagina reproduz o fluxo prototipado de denuncia com uma experiencia mais consistente e
+      clara. O envio atual e demonstrativo, mas a estrutura ja esta pronta para conectar a uma API
+      real.
+    </p>
+  </header>
+
+  <div class="emergency__grid">
+    <section class="glass-panel emergency__form-panel">
+      <form class="emergency__form" [formGroup]="form" (ngSubmit)="submit()">
+        <label class="field">
+          <span class="field__label">
+            <span class="material-symbols-outlined">location_on</span>
+            Localizacao exata
+          </span>
+          <div class="emergency__location-row">
+            <input
+              formControlName="location"
+              type="text"
+              placeholder="Coordenadas ou referencia visual do incendio"
+            />
+            <button
+              class="tactical-button tactical-button--ghost"
+              type="button"
+              (click)="useDemoLocation()"
+            >
+              <span class="material-symbols-outlined">gps_fixed</span>
+              Usar GPS
+            </button>
+          </div>
+          @if (hasError('location', 'required') || hasError('location', 'minlength')) {
+            <span class="field__error">Informe uma localizacao com referencia suficiente.</span>
+          }
+        </label>
+
+        <label class="field">
+          <span class="field__label">
+            <span class="material-symbols-outlined">description</span>
+            Descricao do fogo
+          </span>
+          <textarea
+            class="emergency__textarea"
+            formControlName="description"
+            rows="5"
+            placeholder="Altura das chamas, direcao do vento, proximidade de moradias ou fauna..."
+          ></textarea>
+          @if (hasError('description', 'required') || hasError('description', 'minlength')) {
+            <span class="field__error">Descreva o cenario com pelo menos 10 caracteres.</span>
+          }
+        </label>
+
+        <label class="field">
+          <span class="field__label">
+            <span class="material-symbols-outlined">call</span>
+            Telefone de contato
+          </span>
+          <input formControlName="phone" type="tel" placeholder="(00) 00000-0000" />
+          @if (hasError('phone', 'required') || hasError('phone', 'minlength')) {
+            <span class="field__error">Informe um telefone para retorno rapido.</span>
+          }
+        </label>
+
+        <button class="tactical-button tactical-button--secondary emergency__submit" type="submit">
+          <span class="material-symbols-outlined">bolt</span>
+          Enviar alerta
+        </button>
+
+        @if (successMessage()) {
+          <div class="feedback feedback--success">{{ successMessage() }}</div>
+        }
+      </form>
+    </section>
+
+    <aside class="emergency__rail">
+      <section class="tonal-card emergency__steps">
+        <div class="section-heading">
+          <span class="eyebrow">O que fazer agora</span>
+          <h2>Orientacao imediata enquanto a resposta e organizada.</h2>
+        </div>
+
+        <div class="emergency__step-list">
+          @for (step of steps; track step.title; let index = $index) {
+            <article class="emergency__step-card">
+              <span class="emergency__step-index">{{ index + 1 }}</span>
+              <div>
+                <h3>{{ step.title }}</h3>
+                <p>{{ step.description }}</p>
+              </div>
+            </article>
+          }
+        </div>
+      </section>
+
+      <section class="tonal-card emergency__map-card">
+        <div class="media-frame emergency__map-media">
+          <img
+            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBYNfdwtGYzOxMqINRc5gewZyJcDvCFkEB3PvIoca_iXf9HkJOsYhzrtpqY2n5CZvPi76yVyXwsqLcYC8BQIQ9i4TxrrVJZuqrFEwAkb_kxg1VT5_EDVMre_OdlBhjZGD_lx6VtufScbXFMqHAvdWMacB_QUQ_lzCnpKFVe8rxdMLayA_RgXlKcDn4HGVId9CCcgbgmb5r2xrY4MjPHjcHUzfqHHb5EiBA4_DgwaVWX2cQbFrr10Yum1e5NXLwF7NmdumCvqHhpQ0Jb"
+            alt="Mapa satelital ilustrando monitoramento de calor"
+          />
+        </div>
+        <div class="emergency__map-copy">
+          <span class="status-pill">Live heatmap ativo</span>
+          <p class="muted-label">
+            Bloco demonstrativo para futura integracao com monitoramento territorial.
+          </p>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <section class="emergency__info-grid">
+    @for (card of infoCards; track card.title) {
+      <article class="tonal-card emergency__info-card">
+        <h3>{{ card.title }}</h3>
+        <p>{{ card.description }}</p>
+      </article>
+    }
+  </section>
+</section>
+
+<app-site-footer />

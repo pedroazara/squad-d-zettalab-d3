@@ -1,0 +1,150 @@
+.prevention__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(22rem, 0.9fr);
+  gap: var(--space-8);
+  align-items: center;
+}
+
+.prevention__hero-copy {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.prevention__hero-copy .section-title span {
+  display: block;
+  color: var(--secondary);
+}
+
+.prevention__hero-visual {
+  display: grid;
+  place-items: center;
+  min-height: 28rem;
+  padding: 1.4rem;
+}
+
+.prevention__hero-disc {
+  width: min(100%, 24rem);
+  aspect-ratio: 1 / 1;
+  border-radius: 999px;
+}
+
+.prevention__hero-icon {
+  margin-top: -1.5rem;
+}
+
+.prevention__pillars {
+  display: grid;
+  gap: var(--space-8);
+}
+
+.prevention__pillar-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.prevention__pillar-card {
+  display: grid;
+  gap: var(--space-4);
+  min-height: 16rem;
+  padding: 1.3rem;
+}
+
+.prevention__pillar-card--primary {
+  background:
+    linear-gradient(145deg, rgba(23, 75, 115, 0.24), transparent 38%), rgba(27, 38, 49, 0.88);
+}
+
+.prevention__pillar-card--secondary {
+  background:
+    linear-gradient(145deg, rgba(240, 138, 55, 0.2), transparent 38%), rgba(27, 38, 49, 0.88);
+}
+
+.prevention__pillar-card--tertiary {
+  background:
+    linear-gradient(145deg, rgba(142, 217, 194, 0.18), transparent 38%), rgba(20, 29, 38, 0.92);
+}
+
+.prevention__pillar-card h3 {
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.3rem;
+  letter-spacing: -0.03em;
+}
+
+.prevention__pillar-card p {
+  margin: 0;
+  color: var(--on-surface-variant);
+  line-height: 1.7;
+}
+
+.prevention__checklist {
+  display: grid;
+  gap: var(--space-6);
+  padding: 1.5rem;
+}
+
+.prevention__checklist-header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-5);
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.prevention__checklist-progress {
+  text-align: right;
+}
+
+.prevention__checklist-list {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.prevention__checklist-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-4);
+  align-items: center;
+  padding: 1rem 1.1rem;
+  border-radius: 1rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 40%), rgba(12, 18, 24, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(183, 194, 207, 0.08);
+}
+
+.prevention__checklist-item input {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: #9bcbff;
+}
+
+.prevention__checklist-item span {
+  font-size: 1rem;
+}
+
+.prevention__checklist-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 980px) {
+  .prevention__hero,
+  .prevention__pillar-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .prevention__checklist-header,
+  .prevention__checklist-footer {
+    align-items: start;
+  }
+
+  .prevention__checklist-progress {
+    text-align: left;
+  }
+}
