@@ -10,9 +10,9 @@ venv/
 data/raw/*
 !data/raw/.gitkeep
 
-# Dados processados grandes
-data/processed/focos_consolidado.csv
-data/processed/focos_limpos_detalhados.csv
+# Dados intermediarios (nao versionar)
+data/interim/**
+!data/interim/.gitkeep
 
 # Node
 node_modules/
