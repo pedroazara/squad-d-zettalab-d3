@@ -1,0 +1,22 @@
+bioma,estado,uf,total_area_queimada_ha,media_anual_queimada_ha,total_pastagem_risco_ha,anos_com_dado,risco_geral
+Amazônia,Pará,PA,12177361.86,2435472.37,7482348.49,5,Alto
+Cerrado,Tocantins,TO,10168023.82,2033604.76,7442505.88,5,Alto
+Cerrado,Mato Grosso,MT,10084187.37,2016837.47,9029919.2,5,Alto
+Cerrado,Maranhão,MA,7211174.74,1442234.95,737119.03,5,Alto
+Amazônia,Roraima,RR,6493885.16,1298777.03,338283.05,5,Alto
+Amazônia,Mato Grosso,MT,6368821.47,1273764.29,22098040.98,5,Alto
+Cerrado,Piauí,PI,5588107.06,1117621.41,1077915.72,5,Médio
+Amazônia,Amazonas,AM,3976518.39,795303.68,914739.89,5,Médio
+Amazônia,Rondônia,RO,3098386.44,619677.29,4362010.7,5,Médio
+Cerrado,Goiás,GO,2460478.78,492095.76,15037844.26,5,Médio
+Cerrado,Bahia,BA,2097260.09,419452.02,1409882.96,5,Médio
+Amazônia,Maranhão,MA,1884385.73,376877.15,2637843.55,5,Médio
+Amazônia,Amapá,AP,1224192.25,244838.45,118672.7,5,Médio
+Amazônia,Acre,AC,1190100.43,238020.09,128258.46,5,Médio
+Cerrado,Minas Gerais,MG,1043812.3,208762.46,16459882.88,5,Médio
+Cerrado,Mato Grosso do Sul,MS,392092.18,78418.44,16541684.5,5,Médio
+Cerrado,Pará,PA,313909.98,62782.0,268033.25,5,Baixo
+Amazônia,Tocantins,TO,212417.06,42483.41,1364207.61,5,Baixo
+Cerrado,São Paulo,SP,112445.33,22489.07,128409.21,5,Baixo
+Cerrado,Rondônia,RO,14621.57,2924.31,4341.39,5,Baixo
+Cerrado,Paraná,PR,4920.13,984.03,1526.16,5,Baixo

@@ -12,7 +12,7 @@ from services.risk_service import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_FILE = PROJECT_ROOT / "data" / "processed" / "focos_por_municipio_mes.csv"
+DATA_FILE = PROJECT_ROOT / "data" / "processed" / "focos" / "focos_por_municipio_mes.csv"
 
 
 @dataclass(frozen=True)
