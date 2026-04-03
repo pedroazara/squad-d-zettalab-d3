@@ -23,7 +23,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="Cerrado-Forca API",
     version="0.2.0",
-    description="API inicial para autenticção, risco de incêndio e reportes colaborativos.",
+    description="API inicial para autenticação, risco de incêndio e reportes colaborativos.",
     lifespan=lifespan,
 )
 
