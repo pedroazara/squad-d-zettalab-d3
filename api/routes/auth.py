@@ -34,7 +34,14 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> AuthResponse
     )
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post(
+    "/login",
+    response_model=AuthResponse,
+    responses={
+        401: {"description": "Credenciais invalidas"},
+        422: {"description": "Payload invalido"},
+    },
+)
 def login(payload: UserLogin, db: Session = Depends(get_db)) -> AuthResponse:
     user = authenticate_user(db, payload.email, payload.password)
 
