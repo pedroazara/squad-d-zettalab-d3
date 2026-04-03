@@ -74,7 +74,8 @@ Direcao criativa adotada: **Tactical Prestige / The Guardian's Sentinel**
 
 ## 8. Estrategia de autenticacao nesta fase
 
-Como o backend ainda nao possui endpoints de autenticacao, foi adotado um fluxo temporario com `localStorage`.
+O backend ja possui endpoints de autenticacao (`POST /auth/register` e `POST /auth/login`).
+No frontend, ainda foi mantido um fluxo temporario com `localStorage` para acelerar validacao de UI enquanto a integracao HTTP nao e concluida.
 
 ### O que isso entrega agora
 
@@ -93,10 +94,10 @@ Como o backend ainda nao possui endpoints de autenticacao, foi adotado um fluxo 
 
 ### Curto prazo
 
-1. Criar endpoints de autenticacao no FastAPI.
-2. Adicionar configuracao de ambiente para URL da API.
-3. Trocar `localStorage` por chamadas HTTP no `AuthService`.
-4. Definir contrato de usuario e perfis com backend.
+1. Adicionar configuracao de ambiente para URL da API.
+2. Trocar `localStorage` por chamadas HTTP no `AuthService`.
+3. Definir contrato de usuario e perfis com backend.
+4. Integrar leitura de risco e mapa via `GET /risk` e `GET /fires`.
 
 ### Medio prazo
 

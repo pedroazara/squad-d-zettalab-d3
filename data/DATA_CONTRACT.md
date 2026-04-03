@@ -65,7 +65,9 @@ Arquivo: `processed/risco/resumo_risco_estados.csv`
 - Mudancas de caminho de arquivo devem atualizar os paths no backend.
 - Sempre validar ao menos:
   - `GET /risk`
-  - `GET /risk?region_id=1`
+  - `GET /risk?region_id=1&limit=100&offset=0`
+  - `GET /risk?ano_mes=2024-08&limit=100&offset=0`
+  - `GET /fires?ano_mes=2024-08&limit=100&offset=0`
 
 ## 5) Politica de evolucao
 

@@ -6,8 +6,14 @@ Este diretório contém datasets finais para consumo da API e do dashboard.
 
 - `focos/focos_por_municipio_mes.csv`
   - Granularidade: município/mês.
-  - Uso: base principal do endpoint de risco.
+  - Uso: base principal do endpoint de risco e do mapa agregado (`GET /fires`) na Sprint 1.
   - Campos-chave: `Estado_Clean`, `Municipio_Clean`, `AnoMes`, `Quantidade_Focos`, `RiscoFogo_Mediano`, `FRP_Mediano`.
+
+### Observacao de escopo
+
+- Este dataset nao possui latitude/longitude por foco individual.
+- Na Sprint 1, o mapa e entregue em nivel agregado (municipio/mes) para manter reprodutibilidade no repositorio.
+- Pontos detalhados ficam para evolucao com base `interim/` local em sprint seguinte.
 
 ## Risco
 

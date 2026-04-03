@@ -36,9 +36,17 @@ Consolidar inconsistências da documentação e definir uma base única para imp
 - `POST /auth/register`
 - `POST /auth/login`
 - `GET /regions`
-- `GET /risk` (com filtro opcional por regiao)
+- `GET /risk` (com filtros opcionais `region_id`, `ano_mes` e paginação via `limit`/`offset`)
+- `GET /fires` (mapa agregado por municipio/mes com filtros e paginação)
 - `POST /reports/fire`
 - `GET /reports/fire`
+
+### Decisao de escopo para mapa (Sprint 1)
+
+- Fonte da entrega: `data/processed/focos/focos_por_municipio_mes.csv`.
+- Resultado: endpoint de mapa agregado por municipio/mes, sem latitude/longitude por foco individual.
+- Trade-off aceito: menor precisao espacial em troca de reprodutibilidade, estabilidade e commit limpo para avaliacao.
+- Evolucao prevista: adicionar endpoint opcional de pontos finos (base `interim/` local) na sprint seguinte.
 
 ### Fora do escopo nesta sprint
 
