@@ -9,11 +9,22 @@ from services.security_service import generate_access_token
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=AuthResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        409: {"description": "E-mail ja cadastrado"},
+        422: {"description": "Payload invalido"},
+    },
+)
 def register(payload: UserCreate, db: Session = Depends(get_db)) -> AuthResponse:
     existing_user = get_user_by_email(db, payload.email)
     if existing_user:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="E-mail ja cadastrado")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="E-mail ja cadastrado. Tente fazer login ou usar outro e-mail.",
+        )
 
     user = create_user(db, payload)
     return AuthResponse(

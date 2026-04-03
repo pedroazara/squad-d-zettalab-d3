@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 RoleType = Literal["brigadista", "fazendeiro", "coordenacao", "administrador"]
 RiskLevel = Literal["baixo", "medio", "alto"]
@@ -14,13 +14,37 @@ class UserCreate(BaseModel):
     role: RoleType
     password: str = Field(min_length=6, max_length=128)
 
+    @field_validator("name", "organization")
+    @classmethod
+    def validate_non_blank_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Campo obrigatorio")
+        return normalized
+
+    @field_validator("password")
+    @classmethod
+    def validate_non_blank_password(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Senha invalida")
+        return value
+
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6, max_length=128)
 
+    @field_validator("password")
+    @classmethod
+    def validate_non_blank_password(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Senha invalida")
+        return value
+
 
 class UserPublic(BaseModel):
+    """Representa o usuario retornado pelas rotas publicas de autenticacao."""
+
     id: int
     name: str
     email: EmailStr
