@@ -10,6 +10,10 @@ venv/
 data/raw/*
 !data/raw/.gitkeep
 
+# Dados processados grandes
+data/processed/focos_consolidado.csv
+data/processed/focos_limpos_detalhados.csv
+
 # Node
 node_modules/
 dist/

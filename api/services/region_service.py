@@ -1,73 +1,103 @@
-from models.schemas import RegionSnapshot
-from services.risk_service import RiskInput, calculate_risk_score, classify_risk, forecast_tendency
+import csv
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 
-# Base inicial mockada. Pode ser substituida por ingestao de CSV/API nas proximas sprints.
-REGION_SNAPSHOTS: list[RegionSnapshot] = [
-    RegionSnapshot(
-        id=1,
-        nome="Lavras - Norte",
-        latitude=-21.2334,
-        longitude=-44.9961,
-        temperatura=33.0,
-        umidade=25.0,
-        vento=24.0,
-        precipitacao=0.0,
-        focos_calor=18,
-    ),
-    RegionSnapshot(
-        id=2,
-        nome="Lavras - Sul",
-        latitude=-21.2617,
-        longitude=-44.9802,
-        temperatura=29.0,
-        umidade=41.0,
-        vento=16.0,
-        precipitacao=2.0,
-        focos_calor=7,
-    ),
-    RegionSnapshot(
-        id=3,
-        nome="Lavras - Rural Oeste",
-        latitude=-21.2540,
-        longitude=-45.0400,
-        temperatura=35.0,
-        umidade=22.0,
-        vento=28.0,
-        precipitacao=0.0,
-        focos_calor=24,
-    ),
-]
+from services.risk_service import (
+    AggregateRiskInput,
+    calculate_aggregate_risk_score,
+    classify_risk,
+    forecast_tendency,
+)
 
 
-def list_regions() -> list[RegionSnapshot]:
-    return REGION_SNAPSHOTS
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_FILE = PROJECT_ROOT / "data" / "processed" / "focos_por_municipio_mes.csv"
 
 
-def get_region(region_id: int) -> RegionSnapshot | None:
-    for region in REGION_SNAPSHOTS:
+@dataclass(frozen=True)
+class RiskRegionRecord:
+    id: int
+    municipio: str
+    estado: str
+    ano: int
+    mes: int
+    ano_mes: str
+    quantidade_focos: int
+    risco_fogo_mediano: float
+    frp_mediano: float
+    bioma: str
+
+    @property
+    def nome(self) -> str:
+        return f"{self.municipio} - {self.estado} ({self.ano_mes})"
+
+
+def _parse_int(value: str) -> int:
+    return int(float(value))
+
+
+def _parse_float(value: str) -> float:
+    normalized_value = value.strip()
+    if not normalized_value:
+        return 0.0
+
+    return float(normalized_value)
+
+
+@lru_cache(maxsize=1)
+def _load_records() -> tuple[RiskRegionRecord, ...]:
+    if not DATA_FILE.exists():
+        raise FileNotFoundError(f"Arquivo de dados nao encontrado: {DATA_FILE}")
+
+    records: list[RiskRegionRecord] = []
+
+    with DATA_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
+        reader = csv.DictReader(data_file)
+        for index, row in enumerate(reader, start=1):
+            records.append(
+                RiskRegionRecord(
+                    id=index,
+                    municipio=row["Municipio_Clean"].strip(),
+                    estado=row["Estado_Clean"].strip(),
+                    ano=_parse_int(row["Ano"]),
+                    mes=_parse_int(row["Mes"]),
+                    ano_mes=row["AnoMes"].strip(),
+                    quantidade_focos=_parse_int(row["Quantidade_Focos"]),
+                    risco_fogo_mediano=_parse_float(row["RiscoFogo_Mediano"]),
+                    frp_mediano=_parse_float(row["FRP_Mediano"]),
+                    bioma=row["Bioma_Predominante"].strip(),
+                )
+            )
+
+    return tuple(records)
+
+
+def list_regions() -> list[RiskRegionRecord]:
+    return list(_load_records())
+
+
+def get_region(region_id: int) -> RiskRegionRecord | None:
+    for region in _load_records():
         if region.id == region_id:
             return region
     return None
 
 
-def build_risk_payload(region: RegionSnapshot) -> dict[str, object]:
-    current_score = calculate_risk_score(
-        RiskInput(
-            temperatura=region.temperatura,
-            umidade=region.umidade,
-            vento=region.vento,
-            precipitacao=region.precipitacao,
-            focos_calor=region.focos_calor,
+def build_risk_payload(region: RiskRegionRecord) -> dict[str, object]:
+    current_score = calculate_aggregate_risk_score(
+        AggregateRiskInput(
+            quantidade_focos=region.quantidade_focos,
+            risco_fogo_mediano=region.risco_fogo_mediano,
+            frp_mediano=region.frp_mediano,
         )
     )
 
-    tomorrow_score = calculate_risk_score(
-        RiskInput(
-            temperatura=region.temperatura + 1.5,
-            umidade=max(0.0, region.umidade - 3.0),
-            vento=region.vento + 2.0,
-            precipitacao=max(0.0, region.precipitacao - 0.5),
-            focos_calor=max(0, region.focos_calor + 2),
+    tomorrow_score = calculate_aggregate_risk_score(
+        AggregateRiskInput(
+            quantidade_focos=max(1, round(region.quantidade_focos * 1.15)),
+            risco_fogo_mediano=min(1.0, region.risco_fogo_mediano + 0.05),
+            frp_mediano=region.frp_mediano * 1.1,
         )
     )
 
