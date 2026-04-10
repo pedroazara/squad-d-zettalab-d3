@@ -52,20 +52,20 @@ function Router() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-      >
+      <ThemeProvider defaultTheme="light" switchable>
         <TooltipProvider>
           <Toaster />
-          <Suspense
-            fallback={
-              <div className="min-h-screen flex items-center justify-center bg-guarawatch-bg text-guarawatch-primary font-heading">
-                Carregando painel...
-              </div>
-            }
-          >
-            <Router />
-          </Suspense>
+          <div className="min-h-screen bg-guarawatch-bg text-guarawatch-text dark:bg-slate-950 dark:text-slate-100">
+            <Suspense
+              fallback={
+                <div className="min-h-screen flex items-center justify-center bg-guarawatch-bg text-guarawatch-primary font-heading">
+                  Carregando painel...
+                </div>
+              }
+            >
+              <Router />
+            </Suspense>
+          </div>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
