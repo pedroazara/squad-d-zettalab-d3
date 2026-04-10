@@ -1,15 +1,32 @@
 import { useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { loginMockUser } from '@/services/mockAuth';
 
 export default function Login() {
+  const [, setLocation] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
+  const [status, setStatus] = useState<{ type: 'idle' | 'error' | 'success'; message: string }>({
+    type: 'idle',
+    message: '',
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Login:', { email, password });
+    const result = loginMockUser(email, password);
+    setStatus({
+      type: result.ok ? 'success' : 'error',
+      message: result.message,
+    });
+
+    if (result.ok) {
+      setTimeout(() => {
+        setLocation('/perfil');
+      }, rememberMe ? 350 : 600);
+    }
   };
 
   return (
@@ -58,6 +75,12 @@ export default function Login() {
             Entre com suas credenciais para acessar o painel
           </p>
 
+          <div className="rounded-lg border border-dashed border-guarawatch-accent/40 bg-guarawatch-bg px-4 py-3 mb-6 text-sm text-guarawatch-text">
+            <p className="font-semibold">Acesso mockado para teste</p>
+            <p>Email: usuario@demo.com</p>
+            <p>Senha: 123456</p>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Email Field */}
             <div>
@@ -105,7 +128,12 @@ export default function Login() {
             {/* Remember Me */}
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4" />
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4"
+                />
                 <span className="text-sm text-guarawatch-text">Manter conectado</span>
               </label>
               <a href="#" className="text-sm text-guarawatch-accent hover:text-guarawatch-primary">
@@ -120,6 +148,16 @@ export default function Login() {
             >
               Entrar
             </button>
+
+            {status.type !== 'idle' && (
+              <p
+                className={`text-sm ${
+                  status.type === 'error' ? 'text-red-600' : 'text-green-600'
+                }`}
+              >
+                {status.message}
+              </p>
+            )}
           </form>
 
           {/* Divider */}

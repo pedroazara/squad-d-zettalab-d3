@@ -469,7 +469,7 @@ export default function DashboardNacional() {
               Visualização mockada dos focos de calor no Brasil, sem sobreposição de outros painéis.
             </p>
             <div className="h-[420px] w-full rounded-3xl overflow-hidden border border-gray-200">
-              <MockBrazilMap showFire fireHotspots={filteredFireHotspots} highlight={null} />
+              <MockBrazilMap showFire showOverlay fireHotspots={filteredFireHotspots} highlight={null} />
             </div>
           </div>
 

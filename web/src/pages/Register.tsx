@@ -1,16 +1,22 @@
 import { useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
+import { registerMockUser, type UserProfileType } from '@/services/mockAuth';
 
 export default function Register() {
+  const [, setLocation] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [status, setStatus] = useState<{ type: 'idle' | 'error' | 'success'; message: string }>({
+    type: 'idle',
+    message: '',
+  });
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
     password: '',
     confirmPassword: '',
-    profileType: 'researcher',
+    profileType: 'researcher' as UserProfileType,
     acceptTerms: false,
   });
 
@@ -24,7 +30,32 @@ export default function Register() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Register:', formData);
+
+    if (formData.password !== formData.confirmPassword) {
+      setStatus({
+        type: 'error',
+        message: 'As senhas nao conferem.',
+      });
+      return;
+    }
+
+    const result = registerMockUser({
+      fullName: formData.fullName,
+      email: formData.email,
+      password: formData.password,
+      profileType: formData.profileType,
+    });
+
+    setStatus({
+      type: result.ok ? 'success' : 'error',
+      message: result.message,
+    });
+
+    if (result.ok) {
+      setTimeout(() => {
+        setLocation('/perfil');
+      }, 700);
+    }
   };
 
   return (
@@ -211,6 +242,16 @@ export default function Register() {
             >
               Criar Conta
             </button>
+
+            {status.type !== 'idle' && (
+              <p
+                className={`text-sm ${
+                  status.type === 'error' ? 'text-red-600' : 'text-green-600'
+                }`}
+              >
+                {status.message}
+              </p>
+            )}
           </form>
 
           {/* Sign In Link */}
