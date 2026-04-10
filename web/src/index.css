@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --guarawatch-primary: #1a3d2b;
+  --guarawatch-secondary: #2e6b3e;
+  --guarawatch-accent: #5cb85c;
+  --guarawatch-warning: #f0ad4e;
+  --guarawatch-danger: #d9534f;
+  --guarawatch-info: #5bc0de;
+  --guarawatch-bg: #f0f5f1;
+  --guarawatch-surface: #ffffff;
+  --guarawatch-text: #1c1c1e;
+  --guarawatch-muted: #6c757d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  background: var(--guarawatch-bg);
+  color: var(--guarawatch-text);
+}
+
+h1 {
+  font-family: 'Sora', system-ui, -apple-system, sans-serif;
+  font-weight: 700;
+}
+
+h2,
+h3,
+h4 {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-weight: 600;
+}
+
+.font-display {
+  font-family: 'Sora', system-ui, -apple-system, sans-serif;
+  font-weight: 700;
+}
+
+.font-heading {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-weight: 600;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 500;
+}
+
+.btn-primary {
+  background: var(--guarawatch-primary);
+  color: #fff;
+  border-radius: 0.5rem;
+}
+
+.btn-secondary {
+  border: 2px solid var(--guarawatch-primary);
+  color: var(--guarawatch-primary);
+  background: transparent;
+  border-radius: 0.5rem;
+}
+
+.badge-low {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge-moderate {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.badge-high {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.badge-critical {
+  background: #fee2e2;
+  color: #991b1b;
+}

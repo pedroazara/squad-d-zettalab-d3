@@ -1,17 +1,26 @@
-# Cerrado-Forca Web
+# GuaraWatch Web
 
-Frontend inicial do projeto Cerrado-Forca, construido em Angular para servir como base visual, estrutural e arquitetural das proximas sprints.
+Aplicacao frontend do GuaraWatch para monitoramento historico de queimadas e analise de biodiversidade no Brasil.
 
-## Stack definida
+## Visao Geral
 
-- Angular 21.2.5
-- TypeScript 5.9
-- Angular Router
-- Reactive Forms
-- SCSS com design tokens globais
-- Vitest para testes unitarios
+O projeto oferece dashboards interativos com dados mockados para validacao de produto, navegacao e experiencia analitica. O foco atual e:
 
-## Como rodar
+- consolidar leituras nacionais e por estado
+- acompanhar tendencias historicas de risco
+- analisar impactos na biodiversidade
+- explorar ocorrencias de fauna com filtros avancados
+- correlacionar ocorrencias com camada opcional de queimadas
+
+## Stack
+
+- React 18 + TypeScript
+- Vite 5
+- Wouter (roteamento)
+- Recharts (visualizacoes)
+- Tailwind CSS
+
+## Como Rodar
 
 ```bash
 cd web
@@ -19,76 +28,103 @@ npm install
 npm start
 ```
 
-Aplicacao disponivel em `http://localhost:4200`.
+Aplicacao em: `http://localhost:4173`
 
-## Scripts uteis
+## Scripts
 
 ```bash
 npm start
 npm run build
-npm test -- --watch=false
+npm run test
 ```
 
-## Estrutura de pastas
+## Principais Rotas
+
+- `/` - Home institucional
+- `/login` - Login demo
+- `/cadastro` - Cadastro demo
+- `/dashboard/nacional` - Painel nacional de queimadas
+- `/dashboard/estados` - Analise por estado
+- `/dashboard/biodiversidade` - Impacto em especies e grupos taxonomicos
+- `/dashboard/tendencias` - Tendencias historicas e padroes
+- `/dashboard/ocorrencias` - Nova analise de ocorrencias da fauna
+- `/educativo` - Conteudo educativo
+- `/educativo/artigo/:id` - Detalhes de artigo
+- `/sobre`, `/metodologia`, `/api`, `/contato`, `/perfil`
+
+## O que foi evoluido recentemente
+
+### 1. Granularidade temporal expandida
+
+Os principais dashboards agora suportam:
+
+- Anual
+- Mensal
+- Diario
+
+Arquivos afetados:
+
+- `src/services/mockData.ts`
+- `src/pages/DashboardNacional.tsx`
+- `src/pages/DashboardEstados.tsx`
+- `src/pages/DashboardTendencias.tsx`
+
+### 2. Nova pagina: Analise de Ocorrencias
+
+Foi adicionada a pagina `dashboard/ocorrencias` com:
+
+- filtros por estado e bioma
+- filtro por tipo de animal
+- filtro por raca/subespecie
+- busca textual por especie/comportamento
+- serie temporal anual/mensal/diaria
+- distribuicao comportamental
+- ranking por raca
+- distribuicao por regiao
+- camada opcional de queimadas com:
+  - overlay no mapa
+  - metricas complementares
+  - grafico de correlacao comportamento x intensidade de fogo
+
+Arquivos principais:
+
+- `src/pages/DashboardOcorrencias.tsx`
+- `src/services/mockData.ts`
+- `src/App.tsx`
+- `src/components/Navbar.tsx`
+
+### 3. Painel Nacional com dashboards adicionais
+
+No painel nacional foram adicionados novos blocos analiticos:
+
+- Relacao entre score de risco e focos de calor (top estados)
+- Area queimada estimada por bioma em valores absolutos (M ha)
+
+Arquivo:
+
+- `src/pages/DashboardNacional.tsx`
+
+## Estrutura de Pastas (resumo)
 
 ```text
-src/app/
-  core/
-    auth/          # servico, guard e modelos de autenticacao demo
-  features/
-    auth/          # paginas de login e cadastro
-    dashboard/     # painel inicial protegido
-    home/          # landing page principal
-  shared/
-    components/    # header e footer reutilizaveis
+src/
+  components/
+    ui/
+  contexts/
+  hooks/
+  lib/
+  pages/
+  services/
 ```
 
-## Rotas iniciais
+## Dados e Escopo Atual
 
-- `/` - landing page institucional do projeto
-- `/sobre` - manifesto, conceito e diretrizes da alianca
-- `/prevencao` - boas praticas e checklist de prontidao
-- `/fauna` - resgate, cuidado e impacto do fogo na biodiversidade
-- `/participar` - caminhos de adesao para produtores, voluntarios e apoiadores
-- `/emergencia` - denuncia de incendio em fluxo demo
-- `/login` - acesso demo local
-- `/cadastro` - cadastro demo local
-- `/painel` - area protegida por guard
+- Os dados atuais sao mockados e mantidos em `src/services/mockData.ts`.
+- O projeto esta preparado para evolucao com dados reais e integracao backend.
 
-As seis paginas publicas acima foram adaptadas dos prototipos HTML da pasta `stitch_participar_cerrado_for_a`.
+## Validacao Recomendada
 
-## Fluxo de autenticacao atual
-
-Nesta entrega o login e cadastro funcionam em modo demo com `localStorage`. Isso foi escolhido para:
-
-- permitir demonstracao do fluxo ja nesta semana
-- evitar acoplamento prematuro com um backend ainda em fase inicial
-- preparar a interface para a futura integracao com a API FastAPI
-
-## Credenciais demo para login
-
-Voce pode entrar sem cadastrar nada usando um destes acessos mockados:
-
-- Coordenacao: `comando@cerradoforca.org` / `cerrado123`
-- Brigadista: `brigada@cerradoforca.org` / `brigada123`
-
-Se quiser testar um fluxo novo, a tela `/cadastro` continua criando usuarios locais no navegador.
-
-## Design system
-
-A interface segue a direcao visual "The Guardian's Sentinel" com refinamento inspirado em Material
-Design 3:
-
-- paleta azul-profundo com acentos quentes e superficies tonais
-- combinacao tipografica `Space Grotesk` + `Roboto Flex`
-- superficies elevadas e estados visuais mais proximos do ecossistema Google
-- CTA com profundidade tonal e foco forte em legibilidade
-
-Os tokens globais ficam em [src/styles.scss](/home/zetta/Área%20de%20trabalho/zettalab/squad-d-zettalab-d3/web/src/styles.scss).
-
-## Proximos passos sugeridos
-
-1. Integrar autenticacao real com FastAPI.
-2. Adicionar environments para `apiBaseUrl`.
-3. Criar modulo de mapa operacional e painel de alertas.
-4. Expandir componentes reutilizaveis do design system.
+1. Rodar `npm run build`.
+2. Validar navegacao entre dashboards no desktop e mobile.
+3. Validar alternancia anual/mensal/diaria nos paineis.
+4. Validar filtros e camada de queimadas em `dashboard/ocorrencias`.
