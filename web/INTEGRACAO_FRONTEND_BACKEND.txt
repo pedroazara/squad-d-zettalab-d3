@@ -1,0 +1,126 @@
+1) RESUMO
+- O frontend estava baseado em mockAuth.ts e mockData.ts.
+- O backend real em api/ ja fornece endpoints para autenticacao, risco, regioes, focos agregados e reports.
+- Nesta implementacao, a integracao foi iniciada de ponta a ponta para os modulos que possuem endpoint real.
+
+2) O QUE E POSSIVEL INTEGRAR AGORA (BACKEND EXISTENTE)
+- Autenticacao:
+  POST /auth/register
+  POST /auth/login
+- Dados ambientais:
+  GET /regions
+  GET /risk
+  GET /fires
+- Reportes colaborativos:
+  POST /reports/fire
+  GET /reports/fire
+- Saude:
+  GET /health
+
+3) O QUE FOI DE FATO INTEGRADO (IMPLEMENTADO NO CODIGO)
+- Infra de API criada no frontend:
+  - src/services/apiClient.ts (axios + parser de erro FastAPI)
+  - src/types/api.ts (tipos de contratos do backend)
+  - src/services/authApi.ts (login/register/sessao/logout local)
+  - src/services/analyticsApi.ts (consumo de /regions, /risk, /fires, /reports/fire)
+- Variaveis de ambiente e base de execucao:
+  - .env.example criado
+  - vite.config.ts atualizado com proxy para backend local (127.0.0.1:8000)
+- Autenticacao integrada:
+  - Login agora usa POST /auth/login
+  - Cadastro agora usa POST /auth/register
+  - Sessao persiste token + usuario no localStorage
+  - Logout remove sessao real no frontend (sem mockAuth)
+- Controle de acesso integrado:
+  - src/components/ProtectedRoute.tsx criado
+  - Rotas protegidas em src/App.tsx para dashboards e perfil
+- Perfil integrado:
+  - src/pages/Perfil.tsx agora le dados da sessao autenticada
+- Contato integrado:
+  - src/pages/Contato.tsx agora envia POST /reports/fire
+  - src/pages/Contato.tsx agora lista ultimos reports via GET /reports/fire
+- Dashboards parcialmente integrados com backend:
+  - src/pages/DashboardNacional.tsx consome dados reais via analyticsApi
+  - src/pages/DashboardEstados.tsx consome dados reais via analyticsApi
+  - ambos mantem fallback para dados de contingencia se a API falhar
+- Itens ainda em mock (por falta de endpoint backend dedicado):
+  - dashboard/biodiversidade
+  - dashboard/ocorrencias
+  - dashboard/tendencias
+  - educativo
+
+4) LIMITACOES ATUAIS DO BACKEND (IMPACTO NA INTEGRACAO COMPLETA)
+- Nao existem endpoints dedicados para:
+  - dashboard/biodiversidade
+  - dashboard/ocorrencias
+  - dashboard/tendencias
+  - educativo/conteudo
+  - perfil/preferencias (GET/PUT)
+- Nao ha endpoint /auth/me para validar sessao no servidor.
+- /fires nao possui lat/lng por foco individual, apenas dados agregados por municipio/mes.
+
+5) ESTRATEGIA ADOTADA
+- Integrar imediatamente tudo que possui contrato real no backend.
+- Manter fallback em areas sem endpoint dedicado para evitar regressao visual.
+- Usar mapeadores de payload para preservar o layout atual dos dashboards.
+
+6) PROXIMOS PASSOS PARA FECHAR 100% SEM MOCK
+- Criar endpoints backend para biodiversidade, ocorrencias, tendencias e educativo.
+- Adicionar endpoint /auth/me e, opcionalmente, refresh token.
+- Criar endpoint de preferencias de usuario (GET/PUT).
+- Evoluir /fires para incluir coordenadas por foco (ou endpoint geoespacial dedicado).
+
+7) VARIAVEIS DE AMBIENTE DO FRONTEND
+- VITE_API_BASE_URL (default em .env.example: http://127.0.0.1:8000)
+- VITE_API_TIMEOUT
+
+8) CHECKLIST DE VALIDACAO
+- [ ] Cadastro e login reais funcionando.
+- [ ] Dashboards migrados sem erro de runtime.
+- [ ] Contato criando report e exibindo ultimos reports.
+- [x] Build do frontend executado com sucesso.
+- [x] Lint dos arquivos alterados executado sem erro.
+- [ ] Lint global do projeto ainda com pendencias antigas fora do escopo desta etapa.
+- [ ] Testes automatizados (vitest) ainda nao executados nesta etapa.
+- [ ] API /health acessivel durante desenvolvimento.
+
+9) COMO RODAR (PASSO A PASSO)
+
+9.1) Rodar o backend (FastAPI)
+1. No terminal, a partir da raiz do repositorio:
+  cd api
+2. Criar ambiente virtual (primeira vez):
+  python -m venv .venv
+3. Ativar ambiente virtual:
+  Linux/macOS: source .venv/bin/activate
+  Windows PowerShell: .venv\Scripts\Activate.ps1
+4. Instalar dependencias:
+  pip install -r requirements.txt
+5. Subir API:
+  uvicorn main:app --reload
+6. Validar:
+  API: http://127.0.0.1:8000
+  Health: http://127.0.0.1:8000/health
+  Swagger: http://127.0.0.1:8000/docs
+
+9.2) Rodar o frontend (Vite)
+1. Em outro terminal, entrar na pasta web:
+  cd web
+2. Instalar dependencias (primeira vez):
+  npm install
+3. Criar arquivo .env local (opcional, recomendado):
+  copiar .env.example para .env
+4. Subir frontend:
+  npm start
+5. Acessar:
+  http://127.0.0.1:4173
+
+9.3) Credenciais seed do backend (para login)
+- Email: comando@cerradoforca.org
+- Senha: cerrado123
+
+9.4) Validacao rapida manual
+1. Cadastrar novo usuario em /cadastro e confirmar redirecionamento para /perfil.
+2. Fazer logout e login novamente em /login.
+3. Abrir /dashboard/nacional e /dashboard/estados e verificar carga de dados.
+4. Abrir /contato, enviar report e confirmar listagem de report recente.

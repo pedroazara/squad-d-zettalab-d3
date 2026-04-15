@@ -37,5 +37,31 @@ export default defineConfig({
   },
   server: {
     port: 4173,
+    proxy: {
+      '/auth': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/regions': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/risk': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/fires': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/reports': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/health': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
   },
 });

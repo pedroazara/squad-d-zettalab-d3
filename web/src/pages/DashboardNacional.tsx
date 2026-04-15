@@ -20,6 +20,8 @@ import Footer from '@/components/Footer';
 import FilterSidebar, { FilterPayload } from '@/components/FilterSidebar';
 import { MockBrazilMap } from '@/components/Map';
 import { exportMockCsv, exportMockPdf } from '@/lib/exportUtils';
+import { fetchNationalDashboard } from '@/services/analyticsApi';
+import { getApiErrorMessage } from '@/services/apiClient';
 import {
   getHistoricalData,
   getTopStates,
@@ -44,6 +46,13 @@ const biomaIdToNome: Record<string, string> = {
   pantanal: 'Pantanal',
 };
 
+const normalizeText = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+
 const getRiskBucket = (risco: number) => {
   if (risco < 30) return 'low';
   if (risco < 55) return 'moderate';
@@ -53,7 +62,7 @@ const getRiskBucket = (risco: number) => {
 
 const applyBiomeGranularityProfile = (
   biomeData: Array<{ nome: string; percentual: number; cor: string }>,
-  granularity: 'anual' | 'mensal' | 'diario'
+  granularity: 'anual' | 'mensal'
 ) => {
   if (granularity === 'anual') {
     return biomeData;
@@ -68,16 +77,7 @@ const applyBiomeGranularityProfile = (
     Pampa: 1.08,
   };
 
-  const dailyFactors: Record<string, number> = {
-    Cerrado: 1.12,
-    'Amazônia': 0.92,
-    Caatinga: 1.05,
-    'Mata Atlântica': 0.9,
-    Pantanal: 0.88,
-    Pampa: 1.14,
-  };
-
-  const factors = granularity === 'mensal' ? monthlyFactors : dailyFactors;
+  const factors = monthlyFactors;
   const weighted = biomeData.map((item) => ({
     ...item,
     weighted: item.percentual * (factors[item.nome] || 1),
@@ -93,7 +93,7 @@ const applyBiomeGranularityProfile = (
 
 const parseInitialNationalState = (): {
   filters: FilterPayload;
-  granularity: 'anual' | 'mensal' | 'diario';
+  granularity: 'anual' | 'mensal';
 } => {
   if (typeof window === 'undefined') {
     return { filters: defaultNationalFilters, granularity: 'anual' };
@@ -103,13 +103,15 @@ const parseInitialNationalState = (): {
   const selectedStates = params.get('estados')?.split(',').filter(Boolean) || [];
   const selectedBiomas = params.get('biomas')?.split(',').filter(Boolean) || [];
   const selectedRisks = params.get('risks')?.split(',').filter(Boolean) || [];
-  const fromYear = Number(params.get('fromYear'));
-  const toYear = Number(params.get('toYear'));
+  const hasFromYear = params.has('fromYear');
+  const hasToYear = params.has('toYear');
+  const fromYear = hasFromYear ? Number(params.get('fromYear')) : NaN;
+  const toYear = hasToYear ? Number(params.get('toYear')) : NaN;
   const granularityParam = params.get('granularity');
 
   const filters: FilterPayload = {
     yearRange:
-      Number.isFinite(fromYear) && Number.isFinite(toYear)
+      hasFromYear && hasToYear && Number.isFinite(fromYear) && Number.isFinite(toYear)
         ? [fromYear, toYear]
         : defaultNationalFilters.yearRange,
     selectedBiomas,
@@ -119,31 +121,79 @@ const parseInitialNationalState = (): {
   };
 
   const granularity =
-    granularityParam === 'mensal' || granularityParam === 'diario' || granularityParam === 'anual'
+    granularityParam === 'mensal' || granularityParam === 'anual'
       ? granularityParam
       : 'anual';
 
   return { filters, granularity };
 };
 
+const getXAxisInterval = (length: number, granularity: 'anual' | 'mensal') => {
+  if (granularity === 'anual') {
+    return 0;
+  }
+  const maxTicks = 10;
+  return Math.max(0, Math.ceil(length / maxTicks) - 1);
+};
+
+const monthlyTickFormatter = (value: string) => {
+  const [month, year] = value.split('/');
+  if (!month || !year) {
+    return value;
+  }
+  return `${month}/${year.slice(-2)}`;
+};
+
 export default function DashboardNacional() {
   const initialState = useMemo(() => parseInitialNationalState(), []);
-  const [granularity, setGranularity] = useState<'anual' | 'mensal' | 'diario'>(initialState.granularity);
+  const [granularity, setGranularity] = useState<'anual' | 'mensal'>(initialState.granularity);
   const [appliedFilters, setAppliedFilters] = useState<FilterPayload>(initialState.filters);
-  const historicalData = getHistoricalData(granularity);
-  const topStates = getTopStates();
-  const baseBiomeData = getBiomeDistribution();
-  const fireHotspots = getFireHotspots();
+  const [historicalData, setHistoricalData] = useState(() => getHistoricalData(granularity));
+  const [topStates, setTopStates] = useState(() => getTopStates());
+  const [baseBiomeData, setBaseBiomeData] = useState(() => getBiomeDistribution());
+  const [fireHotspots, setFireHotspots] = useState(() => getFireHotspots());
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      setLoadError('');
+      try {
+        const response = await fetchNationalDashboard(granularity, [
+          appliedFilters.yearRange[0],
+          appliedFilters.yearRange[1],
+        ]);
+        setHistoricalData(response.historicalData.length > 0 ? response.historicalData : getHistoricalData(granularity));
+        setTopStates(response.topStates.length > 0 ? response.topStates : getTopStates());
+        setBaseBiomeData(response.biomeDistribution.length > 0 ? response.biomeDistribution : getBiomeDistribution());
+        setFireHotspots(response.fireHotspots.length > 0 ? response.fireHotspots : getFireHotspots());
+      } catch (error) {
+        setLoadError(getApiErrorMessage(error));
+        setHistoricalData(getHistoricalData(granularity));
+        setTopStates(getTopStates());
+        setBaseBiomeData(getBiomeDistribution());
+        setFireHotspots(getFireHotspots());
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadData();
+  }, [granularity, appliedFilters.yearRange]);
 
   const filteredTopStates = useMemo(() => {
     const selectedBiomaNames = appliedFilters.selectedBiomas
       .map((id) => biomaIdToNome[id])
       .filter(Boolean);
+    const selectedStatesNormalized = new Set(
+      appliedFilters.selectedStates.map((state) => normalizeText(state))
+    );
 
     return topStates.filter((state) => {
       const stateMatch =
-        appliedFilters.selectedStates.length === 0 ||
-        appliedFilters.selectedStates.includes(state.nome);
+        selectedStatesNormalized.size === 0 ||
+        selectedStatesNormalized.has(normalizeText(state.nome));
       const biomeMatch =
         selectedBiomaNames.length === 0 || selectedBiomaNames.includes(state.bioma);
       const riskMatch =
@@ -154,10 +204,14 @@ export default function DashboardNacional() {
   }, [topStates, appliedFilters]);
 
   const filteredFireHotspots = useMemo(() => {
-    if (appliedFilters.selectedStates.length === 0) {
+    const selectedStatesNormalized = new Set(
+      appliedFilters.selectedStates.map((state) => normalizeText(state))
+    );
+
+    if (selectedStatesNormalized.size === 0) {
       return fireHotspots;
     }
-    return fireHotspots.filter((hotspot) => appliedFilters.selectedStates.includes(hotspot.name));
+    return fireHotspots.filter((hotspot) => selectedStatesNormalized.has(normalizeText(hotspot.name)));
   }, [fireHotspots, appliedFilters.selectedStates]);
 
   const effectiveBiomeData = useMemo(() => {
@@ -194,7 +248,7 @@ export default function DashboardNacional() {
     areaMha: Number(((item.percentual / 100) * totalAreaQueimadaMha).toFixed(2)),
   }));
 
-  const statesComparisonData = filteredTopStates.slice(0, 6).map((state) => ({
+  const statesComparisonData = filteredTopStates.map((state) => ({
     estado: state.sigla,
     risco: state.risco,
     focosCalor: state.focosCalor,
@@ -316,6 +370,15 @@ export default function DashboardNacional() {
             Visão consolidada do risco de queimadas em todo o Brasil
           </p>
 
+          {loading && (
+            <p className="text-sm text-guarawatch-muted mb-4">Carregando dados do backend...</p>
+          )}
+          {loadError && (
+            <p className="text-sm text-amber-700 mb-4">
+              Falha ao carregar backend ({loadError}). Exibindo dados de contingência.
+            </p>
+          )}
+
           <div className="mb-6 flex items-center gap-3">
             <span className="text-sm font-semibold text-guarawatch-text">Granularidade:</span>
             <button
@@ -337,16 +400,6 @@ export default function DashboardNacional() {
               }`}
             >
               Mensal
-            </button>
-            <button
-              onClick={() => setGranularity('diario')}
-              className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-                granularity === 'diario'
-                  ? 'bg-guarawatch-primary text-white border-guarawatch-primary'
-                  : 'bg-white text-guarawatch-primary border-guarawatch-primary'
-              }`}
-            >
-              Diário
             </button>
           </div>
 
@@ -392,14 +445,20 @@ export default function DashboardNacional() {
               <h2 className="font-heading text-lg font-semibold text-guarawatch-primary mb-4">
                 {granularity === 'anual'
                   ? 'Evolução da Área Queimada (Brasil) - Anual'
-                  : granularity === 'mensal'
-                    ? 'Evolução da Área Queimada (Brasil) - Mensal'
-                    : 'Evolução da Área Queimada (Brasil) - Últimos 30 dias'}
+                  : 'Evolução da Área Queimada (Brasil) - Mensal'}
               </h2>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={historicalData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="periodo" interval={granularity === 'diario' ? 4 : 0} />
+                  <XAxis
+                    dataKey="periodo"
+                    interval={getXAxisInterval(historicalData.length, granularity)}
+                    tickFormatter={granularity === 'mensal' ? monthlyTickFormatter : undefined}
+                    minTickGap={36}
+                    angle={granularity === 'mensal' ? -28 : 0}
+                    textAnchor={granularity === 'mensal' ? 'end' : 'middle'}
+                    height={granularity === 'mensal' ? 56 : undefined}
+                  />
                   <YAxis yAxisId="left" />
                   <YAxis yAxisId="right" orientation="right" />
                   <Tooltip />
@@ -463,10 +522,10 @@ export default function DashboardNacional() {
           {/* Fire Map */}
           <div className="bg-white rounded-lg p-6 shadow-sm mb-8">
             <h2 className="font-heading text-lg font-semibold text-guarawatch-primary mb-4">
-              Mapa Nacional de Incêndios (mockado)
+              Mapa Nacional de Incêndios
             </h2>
             <p className="text-sm text-guarawatch-muted mb-4">
-              Visualização mockada dos focos de calor no Brasil, sem sobreposição de outros painéis.
+              Visualização baseada em dados agregados por município/mês.
             </p>
             <div className="h-[420px] w-full rounded-3xl overflow-hidden border border-gray-200">
               <MockBrazilMap showFire showOverlay fireHotspots={filteredFireHotspots} highlight={null} />
@@ -477,10 +536,10 @@ export default function DashboardNacional() {
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-8">
             <div className="bg-white rounded-lg p-6 shadow-sm">
               <h2 className="font-heading text-lg font-semibold text-guarawatch-primary mb-4">
-                Relação entre Risco e Focos de Calor (Top 6 estados)
+                Relação entre Risco e Focos de Calor (Estados do recorte)
               </h2>
               <p className="text-sm text-guarawatch-muted mb-4">
-                Comparativo rápido para identificar estados com alta combinação de risco e atividade térmica.
+                Comparativo dos estados atualmente selecionados pelos filtros aplicados.
               </p>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={statesComparisonData}>
@@ -496,7 +555,7 @@ export default function DashboardNacional() {
               </ResponsiveContainer>
               {statesComparisonData.length === 0 && (
                 <p className="text-sm text-guarawatch-muted mt-3">
-                  Nenhum estado do recorte atual está presente no ranking nacional.
+                  Nenhum estado disponível para o recorte/filtros atuais.
                 </p>
               )}
             </div>
@@ -524,7 +583,7 @@ export default function DashboardNacional() {
           {/* Top States Table */}
           <div className="bg-white rounded-lg p-6 shadow-sm">
             <h2 className="font-heading text-lg font-semibold text-guarawatch-primary mb-4">
-              Top 10 Estados por Risco
+              Estados por Risco (Recorte Atual)
             </h2>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

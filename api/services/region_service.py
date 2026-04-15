@@ -33,6 +33,82 @@ class RiskRegionRecord:
         return f"{self.municipio} - {self.estado} ({self.ano_mes})"
 
 
+_STATE_COORDINATES: dict[str, tuple[float, float]] = {
+    "ACRE": (-9.02, -70.81),
+    "ALAGOAS": (-9.57, -36.78),
+    "AMAPA": (1.41, -51.77),
+    "AMAZONAS": (-3.07, -61.66),
+    "BAHIA": (-12.70, -41.70),
+    "CEARA": (-5.20, -39.50),
+    "DISTRITO FEDERAL": (-15.78, -47.93),
+    "ESPIRITO SANTO": (-19.19, -40.34),
+    "GOIAS": (-15.90, -50.14),
+    "MARANHAO": (-5.42, -45.44),
+    "MATO GROSSO": (-12.64, -55.42),
+    "MATO GROSSO DO SUL": (-20.51, -54.54),
+    "MINAS GERAIS": (-18.10, -44.38),
+    "PARA": (-3.79, -52.48),
+    "PARAIBA": (-7.24, -36.78),
+    "PARANA": (-24.89, -51.55),
+    "PERNAMBUCO": (-8.38, -37.86),
+    "PIAUI": (-7.72, -42.73),
+    "RIO DE JANEIRO": (-22.84, -43.15),
+    "RIO GRANDE DO NORTE": (-5.22, -36.52),
+    "RIO GRANDE DO SUL": (-30.17, -53.50),
+    "RONDONIA": (-11.22, -62.80),
+    "RORAIMA": (1.89, -61.22),
+    "SANTA CATARINA": (-27.33, -50.88),
+    "SAO PAULO": (-22.19, -48.79),
+    "SERGIPE": (-10.57, -37.45),
+    "TOCANTINS": (-10.30, -48.30),
+}
+
+
+def _normalize(value: str) -> str:
+    return (
+        value.strip()
+        .upper()
+        .replace("Á", "A")
+        .replace("À", "A")
+        .replace("Â", "A")
+        .replace("Ã", "A")
+        .replace("É", "E")
+        .replace("Ê", "E")
+        .replace("Í", "I")
+        .replace("Ó", "O")
+        .replace("Ô", "O")
+        .replace("Õ", "O")
+        .replace("Ú", "U")
+        .replace("Ç", "C")
+    )
+
+
+def _state_coordinates(state_name: str) -> tuple[float, float]:
+    fallback = (-15.0, -55.0)
+    return _STATE_COORDINATES.get(_normalize(state_name), fallback)
+
+
+def _build_region_snapshot(region: RiskRegionRecord) -> dict[str, float | int | str]:
+    base_lat, base_lng = _state_coordinates(region.estado)
+    offset = (region.id % 9) * 0.03
+    temperatura = round(24 + (region.risco_fogo_mediano * 12) + (region.frp_mediano / 180), 1)
+    umidade = round(max(12.0, 75 - (region.risco_fogo_mediano * 50)), 1)
+    vento = round(6 + min(24.0, region.frp_mediano / 12), 1)
+    precipitacao = round(max(0.0, 120 - (region.risco_fogo_mediano * 110)), 1)
+
+    return {
+        "id": region.id,
+        "nome": region.nome,
+        "latitude": round(base_lat + offset, 4),
+        "longitude": round(base_lng - offset, 4),
+        "temperatura": temperatura,
+        "umidade": umidade,
+        "vento": vento,
+        "precipitacao": precipitacao,
+        "focos_calor": region.quantidade_focos,
+    }
+
+
 def _parse_int(value: str) -> int:
     return int(float(value))
 
@@ -75,6 +151,10 @@ def _load_records() -> tuple[RiskRegionRecord, ...]:
 
 def list_regions() -> list[RiskRegionRecord]:
     return list(_load_records())
+
+
+def list_region_snapshots() -> list[dict[str, float | int | str]]:
+    return [_build_region_snapshot(region) for region in _load_records()]
 
 
 def get_region(region_id: int) -> RiskRegionRecord | None:

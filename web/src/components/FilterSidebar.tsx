@@ -12,9 +12,12 @@ export interface FilterPayload {
 interface FilterSidebarProps {
   multiStateSelection?: boolean;
   initialFilters?: Partial<FilterPayload>;
+  // eslint-disable-next-line no-unused-vars
   onApplyFilters?: (filters: FilterPayload) => void;
   onClearFilters?: () => void;
+  // eslint-disable-next-line no-unused-vars
   onExportPdf?: (filters: FilterPayload) => void;
+  // eslint-disable-next-line no-unused-vars
   onExportCsv?: (filters: FilterPayload) => void;
 }
 
@@ -49,6 +52,21 @@ const sectionIds = {
   risk: 'filter-section-risk',
 };
 
+const YEAR_MIN = 2019;
+const YEAR_MAX = 2025;
+
+const clampYear = (value: number) => Math.min(YEAR_MAX, Math.max(YEAR_MIN, value));
+
+const sanitizeYearRange = (range?: number[]) => {
+  if (!range || range.length !== 2) {
+    return [YEAR_MIN, YEAR_MAX];
+  }
+
+  const from = clampYear(Number.isFinite(range[0]) ? range[0] : YEAR_MIN);
+  const to = clampYear(Number.isFinite(range[1]) ? range[1] : YEAR_MAX);
+  return [from, to];
+};
+
 export default function FilterSidebar({
   multiStateSelection = false,
   initialFilters,
@@ -57,11 +75,7 @@ export default function FilterSidebar({
   onExportPdf,
   onExportCsv,
 }: FilterSidebarProps) {
-  const [yearRange, setYearRange] = useState<number[]>(
-    initialFilters?.yearRange && initialFilters.yearRange.length === 2
-      ? initialFilters.yearRange
-      : [2019, 2025]
-  );
+  const [yearRange, setYearRange] = useState<number[]>(sanitizeYearRange(initialFilters?.yearRange));
   const [selectedBiomas, setSelectedBiomas] = useState<string[]>(initialFilters?.selectedBiomas || []);
   const [selectedStates, setSelectedStates] = useState<string[]>(
     initialFilters?.selectedStates || (initialFilters?.selectedState ? [initialFilters.selectedState] : [])
@@ -104,6 +118,12 @@ export default function FilterSidebar({
     );
   };
 
+  const allStatesSelected = selectedStates.length === states.length;
+
+  const toggleAllStates = () => {
+    setSelectedStates((prev) => (prev.length === states.length ? [] : [...states]));
+  };
+
   const getCurrentFilters = (): FilterPayload => {
     const statesPayload = multiStateSelection
       ? selectedStates
@@ -137,7 +157,7 @@ export default function FilterSidebar({
   const recordCount: number = 1250; // Mock value
 
   return (
-    <aside className="w-64 bg-guarawatch-bg border-r border-gray-200 p-6 sticky top-16 self-start">
+    <aside className="w-64 bg-guarawatch-bg border-r border-gray-200 p-6 sticky top-16 self-start h-[calc(100vh-4rem)] overflow-y-auto overscroll-contain">
       <h2 className="font-heading text-lg font-semibold mb-6 text-guarawatch-text">Filtros</h2>
 
       {/* Year Filter */}
@@ -159,29 +179,29 @@ export default function FilterSidebar({
             <div className="flex gap-2">
               <input
                 type="number"
-                min="2019"
-                max="2025"
+                min={String(YEAR_MIN)}
+                max={String(YEAR_MAX)}
                 value={yearRange[0]}
-                onChange={(e) => setYearRange([Number(e.target.value), yearRange[1]])}
+                onChange={(e) => setYearRange([clampYear(Number(e.target.value)), yearRange[1]])}
                 className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
                 aria-label="Ano inicial"
               />
               <input
                 type="number"
-                min="2019"
-                max="2025"
+                min={String(YEAR_MIN)}
+                max={String(YEAR_MAX)}
                 value={yearRange[1]}
-                onChange={(e) => setYearRange([yearRange[0], Number(e.target.value)])}
+                onChange={(e) => setYearRange([yearRange[0], clampYear(Number(e.target.value))])}
                 className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
                 aria-label="Ano final"
               />
             </div>
             <input
               type="range"
-              min="2019"
-              max="2025"
+              min={String(YEAR_MIN)}
+              max={String(YEAR_MAX)}
               value={yearRange[0]}
-              onChange={(e) => setYearRange([Number(e.target.value), yearRange[1]])}
+              onChange={(e) => setYearRange([clampYear(Number(e.target.value)), yearRange[1]])}
               className="w-full"
               aria-label="Controle de período"
             />
@@ -241,6 +261,15 @@ export default function FilterSidebar({
         {expandedSections.state && (
           multiStateSelection ? (
             <div className="space-y-2" id={sectionIds.state}>
+              <label className="flex items-center gap-2 py-1 cursor-pointer border border-gray-200 rounded px-2 bg-white">
+                <input
+                  type="checkbox"
+                  checked={allStatesSelected}
+                  onChange={toggleAllStates}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm font-semibold text-guarawatch-text">Selecionar todos</span>
+              </label>
               <div
                 className="max-h-44 overflow-y-auto border border-gray-200 rounded p-2 bg-white"
                 role="group"

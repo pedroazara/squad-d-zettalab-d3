@@ -1,26 +1,30 @@
-import { useState } from 'react';
+import { type ChangeEvent, type FormEvent, useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
-import { registerMockUser, type UserProfileType } from '@/services/mockAuth';
+import { Mail, Lock, User, Eye, EyeOff, Building2 } from 'lucide-react';
+import { register } from '@/services/authApi';
+import { getApiErrorMessage } from '@/services/apiClient';
+import type { BackendRole } from '@/types/api';
 
 export default function Register() {
   const [, setLocation] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<{ type: 'idle' | 'error' | 'success'; message: string }>({
     type: 'idle',
     message: '',
   });
   const [formData, setFormData] = useState({
-    fullName: '',
+    name: '',
     email: '',
+    organization: '',
     password: '',
     confirmPassword: '',
-    profileType: 'researcher' as UserProfileType,
+    role: 'coordenacao' as BackendRole,
     acceptTerms: false,
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     setFormData((prev) => ({
       ...prev,
@@ -28,7 +32,7 @@ export default function Register() {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
     if (formData.password !== formData.confirmPassword) {
@@ -39,22 +43,30 @@ export default function Register() {
       return;
     }
 
-    const result = registerMockUser({
-      fullName: formData.fullName,
-      email: formData.email,
-      password: formData.password,
-      profileType: formData.profileType,
-    });
+    setSubmitting(true);
+    try {
+      const result = await register({
+        name: formData.name,
+        email: formData.email,
+        organization: formData.organization,
+        role: formData.role,
+        password: formData.password,
+      });
 
-    setStatus({
-      type: result.ok ? 'success' : 'error',
-      message: result.message,
-    });
-
-    if (result.ok) {
+      setStatus({
+        type: 'success',
+        message: result.message,
+      });
       setTimeout(() => {
         setLocation('/perfil');
       }, 700);
+    } catch (error) {
+      setStatus({
+        type: 'error',
+        message: getApiErrorMessage(error),
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -114,10 +126,28 @@ export default function Register() {
                 <User className="absolute left-3 top-3 text-guarawatch-muted" size={18} />
                 <input
                   type="text"
-                  name="fullName"
-                  value={formData.fullName}
+                  name="name"
+                  value={formData.name}
                   onChange={handleChange}
                   placeholder="Seu nome completo"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-guarawatch-accent focus:ring-2 focus:ring-guarawatch-accent focus:ring-opacity-20"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-heading font-semibold text-guarawatch-text mb-2">
+                Organização
+              </label>
+              <div className="relative">
+                <Building2 className="absolute left-3 top-3 text-guarawatch-muted" size={18} />
+                <input
+                  type="text"
+                  name="organization"
+                  value={formData.organization}
+                  onChange={handleChange}
+                  placeholder="Instituição, brigada ou organização"
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-guarawatch-accent focus:ring-2 focus:ring-guarawatch-accent focus:ring-opacity-20"
                   required
                 />
@@ -201,15 +231,15 @@ export default function Register() {
                 Tipo de Perfil
               </label>
               <select
-                name="profileType"
-                value={formData.profileType}
+                name="role"
+                value={formData.role}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-guarawatch-accent focus:ring-2 focus:ring-guarawatch-accent focus:ring-opacity-20"
               >
-                <option value="public">Instituição Pública</option>
-                <option value="researcher">Pesquisador</option>
-                <option value="farmer">Produtor Rural</option>
-                <option value="other">Outro</option>
+                <option value="coordenacao">Coordenação</option>
+                <option value="brigadista">Brigadista</option>
+                <option value="fazendeiro">Fazendeiro</option>
+                <option value="administrador">Administrador</option>
               </select>
             </div>
 
@@ -238,9 +268,10 @@ export default function Register() {
             {/* Submit Button */}
             <button
               type="submit"
+              disabled={submitting}
               className="w-full py-2 bg-guarawatch-primary text-white font-heading font-semibold rounded-lg hover:opacity-90 transition-opacity"
             >
-              Criar Conta
+              {submitting ? 'Criando conta...' : 'Criar Conta'}
             </button>
 
             {status.type !== 'idle' && (

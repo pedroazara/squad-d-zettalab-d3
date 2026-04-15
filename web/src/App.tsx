@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
+import ProtectedRoute from "./components/ProtectedRoute";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 const NotFound = lazy(() => import("@/pages/NotFound"));
@@ -29,19 +30,33 @@ function Router() {
       <Route path={"/"} component={Home} />
       <Route path={"/login"} component={Login} />
       <Route path={"/cadastro"} component={Register} />
-      <Route path={"/dashboard/nacional"} component={DashboardNacional} />
-      <Route path={"/dashboard/estados"} component={DashboardEstados} />
-      <Route path={"/dashboard/estados/:sigla"} component={DashboardEstados} />
-      <Route path={"/dashboard/biodiversidade"} component={DashboardBiodiversidade} />
-      <Route path={"/dashboard/tendencias"} component={DashboardTendencias} />
-      <Route path={"/dashboard/ocorrencias"} component={DashboardOcorrencias} />
+      <Route path={"/dashboard/nacional"}>
+        {() => <ProtectedRoute component={DashboardNacional} />}
+      </Route>
+      <Route path={"/dashboard/estados"}>
+        {() => <ProtectedRoute component={DashboardEstados} />}
+      </Route>
+      <Route path={"/dashboard/estados/:sigla"}>
+        {() => <ProtectedRoute component={DashboardEstados} />}
+      </Route>
+      <Route path={"/dashboard/biodiversidade"}>
+        {() => <ProtectedRoute component={DashboardBiodiversidade} />}
+      </Route>
+      <Route path={"/dashboard/tendencias"}>
+        {() => <ProtectedRoute component={DashboardTendencias} />}
+      </Route>
+      <Route path={"/dashboard/ocorrencias"}>
+        {() => <ProtectedRoute component={DashboardOcorrencias} />}
+      </Route>
       <Route path={"/educativo"} component={Educativo} />
       <Route path={"/educativo/artigo/:id"} component={EducativoDetalhes} />
       <Route path={"/sobre"} component={Sobre} />
       <Route path={"/metodologia"} component={Metodologia} />
       <Route path={"/api"} component={Api} />
       <Route path={"/contato"} component={Contato} />
-      <Route path={"/perfil"} component={Perfil} />
+      <Route path={"/perfil"}>
+        {() => <ProtectedRoute component={Perfil} />}
+      </Route>
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

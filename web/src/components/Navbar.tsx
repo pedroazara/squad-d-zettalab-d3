@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { Menu, X, Bell, LogOut, User, Moon, Sun } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
-import { logoutMockUser } from '@/services/mockAuth';
+import { clearSession } from '@/services/authApi';
 import LogoBrand from './LogoBrand';
 
 export default function Navbar() {
@@ -12,7 +12,7 @@ export default function Navbar() {
   const { theme, toggleTheme } = useTheme();
 
   const handleLogout = () => {
-    logoutMockUser();
+    clearSession();
     setUserMenuOpen(false);
     setLocation('/login');
   };

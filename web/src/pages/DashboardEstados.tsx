@@ -1,37 +1,155 @@
-import { useState } from 'react';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useParams } from 'wouter';
 import {
   AreaChart,
   Area,
   BarChart,
   Bar,
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from 'recharts';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FilterSidebar, { FilterPayload } from '@/components/FilterSidebar';
+import { fetchStateDashboard } from '@/services/analyticsApi';
+import { getApiErrorMessage } from '@/services/apiClient';
 import {
   getStateData,
   getStateHistoricalData,
   getStateFireDistribution,
-  getTopStates,
 } from '@/services/mockData';
 import { exportMockCsv, exportMockPdf } from '@/lib/exportUtils';
 
+const stateCodeToLabel: Record<string, string> = {
+  AC: 'Acre',
+  AL: 'Alagoas',
+  AP: 'Amapá',
+  AM: 'Amazonas',
+  BA: 'Bahia',
+  CE: 'Ceará',
+  DF: 'Distrito Federal',
+  ES: 'Espírito Santo',
+  GO: 'Goiás',
+  MA: 'Maranhão',
+  MT: 'Mato Grosso',
+  MS: 'Mato Grosso do Sul',
+  MG: 'Minas Gerais',
+  PA: 'Pará',
+  PB: 'Paraíba',
+  PR: 'Paraná',
+  PE: 'Pernambuco',
+  PI: 'Piauí',
+  RJ: 'Rio de Janeiro',
+  RN: 'Rio Grande do Norte',
+  RS: 'Rio Grande do Sul',
+  RO: 'Rondônia',
+  RR: 'Roraima',
+  SC: 'Santa Catarina',
+  SP: 'São Paulo',
+  SE: 'Sergipe',
+  TO: 'Tocantins',
+};
+
+const normalize = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+
+const stateLabelToCode: Record<string, string> = Object.entries(stateCodeToLabel).reduce(
+  (acc, [code, label]) => {
+    acc[normalize(label)] = code;
+    return acc;
+  },
+  {} as Record<string, string>
+);
+
+const getXAxisInterval = (length: number, granularity: 'anual' | 'mensal') => {
+  if (granularity === 'anual') {
+    return 0;
+  }
+  const maxTicks = 10;
+  return Math.max(0, Math.ceil(length / maxTicks) - 1);
+};
+
+const monthlyTickFormatter = (value: string) => {
+  const [month, year] = value.split('/');
+  if (!month || !year) {
+    return value;
+  }
+  return `${month}/${year.slice(-2)}`;
+};
+
 export default function DashboardEstados() {
-  const [selectedState, setSelectedState] = useState('MT');
-  const [granularity, setGranularity] = useState<'anual' | 'mensal' | 'diario'>('anual');
-  const stateData = getStateData(selectedState);
-  const seasonalityData = getStateFireDistribution(selectedState, granularity);
-  const historicalData = getStateHistoricalData(selectedState, granularity);
-  const topStates = getTopStates();
+  const params = useParams<{ sigla?: string }>();
+  const initialStateCode = params.sigla?.toUpperCase() || 'MT';
+  const [appliedFilters, setAppliedFilters] = useState<FilterPayload>({
+    yearRange: [2019, 2025],
+    selectedBiomas: [],
+    selectedStates: [stateCodeToLabel[initialStateCode] || 'Mato Grosso'],
+    selectedState: stateCodeToLabel[initialStateCode] || 'Mato Grosso',
+    selectedRisks: [],
+  });
+  const [granularity, setGranularity] = useState<'anual' | 'mensal'>('anual');
+  const selectedStateCode =
+    stateLabelToCode[normalize(appliedFilters.selectedState || '')] || initialStateCode;
+
+  const [stateData, setStateData] = useState(() => getStateData(initialStateCode));
+  const [seasonalityData, setSeasonalityData] = useState<Array<{ mes?: string; periodo?: string; area: number }>>(() =>
+    getStateFireDistribution(initialStateCode, granularity)
+  );
+  const [historicalData, setHistoricalData] = useState(() =>
+    getStateHistoricalData(initialStateCode, granularity)
+  );
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    if (params.sigla) {
+      const code = params.sigla.toUpperCase();
+      setAppliedFilters((prev) => ({
+        ...prev,
+        selectedStates: [stateCodeToLabel[code] || prev.selectedStates[0] || 'Mato Grosso'],
+        selectedState: stateCodeToLabel[code] || prev.selectedState || 'Mato Grosso',
+      }));
+    }
+  }, [params.sigla]);
+
+  useEffect(() => {
+    const loadStateData = async () => {
+      setLoading(true);
+      setLoadError('');
+      try {
+        const response = await fetchStateDashboard(selectedStateCode, granularity, [
+          appliedFilters.yearRange[0],
+          appliedFilters.yearRange[1],
+        ]);
+        setStateData(response);
+        setSeasonalityData(
+          response.seasonalityData.length > 0
+            ? response.seasonalityData
+            : getStateFireDistribution(selectedStateCode, granularity)
+        );
+        setHistoricalData(
+          response.historicalData.length > 0
+            ? response.historicalData
+            : getStateHistoricalData(selectedStateCode, granularity)
+        );
+      } catch (error) {
+        setLoadError(getApiErrorMessage(error));
+        setStateData(getStateData(selectedStateCode));
+        setSeasonalityData(getStateFireDistribution(selectedStateCode, granularity));
+        setHistoricalData(getStateHistoricalData(selectedStateCode, granularity));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadStateData();
+  }, [selectedStateCode, granularity, appliedFilters.yearRange]);
 
   const handleExportPdf = (filters: FilterPayload) => {
     exportMockPdf(`Painel Estadual-${stateData.sigla}`, filters);
@@ -53,11 +171,34 @@ export default function DashboardEstados() {
       <Navbar />
 
       <div className="flex">
-        <FilterSidebar onExportPdf={handleExportPdf} onExportCsv={handleExportCsv} />
+        <FilterSidebar
+          initialFilters={appliedFilters}
+          onApplyFilters={(filters) => setAppliedFilters(filters)}
+          onClearFilters={() =>
+            setAppliedFilters((prev) => ({
+              ...prev,
+              yearRange: [2019, 2025],
+              selectedBiomas: [],
+              selectedStates: [stateCodeToLabel[initialStateCode] || 'Mato Grosso'],
+              selectedState: stateCodeToLabel[initialStateCode] || 'Mato Grosso',
+              selectedRisks: [],
+            }))
+          }
+          onExportPdf={handleExportPdf}
+          onExportCsv={handleExportCsv}
+        />
 
         <main className="flex-1 p-8">
           {/* Page Header */}
           <div className="mb-8">
+            {loading && (
+              <p className="text-sm text-guarawatch-muted mb-2">Carregando dados do backend...</p>
+            )}
+            {loadError && (
+              <p className="text-sm text-amber-700 mb-2">
+                Falha ao carregar backend ({loadError}). Exibindo dados de contingência.
+              </p>
+            )}
             <div className="flex items-center gap-4 mb-4">
               <div>
                 <h1 className="font-display text-4xl font-bold text-guarawatch-primary">
@@ -86,23 +227,12 @@ export default function DashboardEstados() {
             </div>
           </div>
 
-          {/* State Selector */}
+          {/* Controls */}
           <div className="mb-8 bg-white rounded-lg p-4 shadow-sm">
-            <label className="block text-sm font-heading font-semibold text-guarawatch-text mb-2">
-              Selecionar Estado
-            </label>
             <div className="flex flex-col md:flex-row md:items-center gap-3">
-              <select
-                value={selectedState}
-                onChange={(e) => setSelectedState(e.target.value)}
-                className="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-guarawatch-accent"
-              >
-                {topStates.map((state) => (
-                  <option key={state.sigla} value={state.sigla}>
-                    {state.nome} ({state.sigla})
-                  </option>
-                ))}
-              </select>
+              <p className="text-sm text-guarawatch-muted">
+                Estado selecionado pelos filtros laterais: <strong>{appliedFilters.selectedState || stateData.nome}</strong>
+              </p>
 
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-guarawatch-text">Granularidade:</span>
@@ -125,16 +255,6 @@ export default function DashboardEstados() {
                   }`}
                 >
                   Mensal
-                </button>
-                <button
-                  onClick={() => setGranularity('diario')}
-                  className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-                    granularity === 'diario'
-                      ? 'bg-guarawatch-primary text-white border-guarawatch-primary'
-                      : 'bg-white text-guarawatch-primary border-guarawatch-primary'
-                  }`}
-                >
-                  Diário
                 </button>
               </div>
             </div>
@@ -174,10 +294,8 @@ export default function DashboardEstados() {
             <div className="bg-white rounded-lg p-6 shadow-sm">
               <h2 className="font-heading text-lg font-semibold text-guarawatch-primary mb-4">
                 {granularity === 'anual'
-                  ? `Evolução do Risco (${selectedState}) - Anual`
-                  : granularity === 'mensal'
-                    ? `Evolução do Risco (${selectedState}) - Mensal`
-                    : `Evolução do Risco (${selectedState}) - Últimos 30 dias`}
+                  ? `Evolução do Risco (${selectedStateCode}) - Anual`
+                  : `Evolução do Risco (${selectedStateCode}) - Mensal`}
               </h2>
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={historicalData}>
@@ -188,7 +306,15 @@ export default function DashboardEstados() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="periodo" interval={granularity === 'diario' ? 4 : 0} />
+                  <XAxis
+                    dataKey="periodo"
+                    interval={getXAxisInterval(historicalData.length, granularity)}
+                    tickFormatter={granularity === 'mensal' ? monthlyTickFormatter : undefined}
+                    minTickGap={36}
+                    angle={granularity === 'mensal' ? -28 : 0}
+                    textAnchor={granularity === 'mensal' ? 'end' : 'middle'}
+                    height={granularity === 'mensal' ? 56 : undefined}
+                  />
                   <YAxis domain={[0, 100]} />
                   <Tooltip />
                   <Area
@@ -207,14 +333,20 @@ export default function DashboardEstados() {
               <h2 className="font-heading text-lg font-semibold text-guarawatch-primary mb-4">
                 {granularity === 'anual'
                   ? 'Sazonalidade das Queimadas (mensal)'
-                  : granularity === 'mensal'
-                    ? 'Sazonalidade das Queimadas (12 meses)'
-                    : 'Queimadas nos últimos 30 dias'}
+                  : 'Sazonalidade das Queimadas (mensal)'}
               </h2>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={seasonalityData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey={granularity === 'diario' ? 'periodo' : 'mes'} interval={granularity === 'diario' ? 4 : 0} />
+                  <XAxis
+                    dataKey="mes"
+                    interval={getXAxisInterval(seasonalityData.length, granularity)}
+                    tickFormatter={granularity === 'mensal' ? monthlyTickFormatter : undefined}
+                    minTickGap={36}
+                    angle={granularity === 'mensal' ? -28 : 0}
+                    textAnchor={granularity === 'mensal' ? 'end' : 'middle'}
+                    height={granularity === 'mensal' ? 56 : undefined}
+                  />
                   <YAxis />
                   <Tooltip />
                   <Bar

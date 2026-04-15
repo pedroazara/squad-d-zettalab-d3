@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
-import { loginMockUser } from '@/services/mockAuth';
+import { login } from '@/services/authApi';
+import { getApiErrorMessage } from '@/services/apiClient';
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -9,23 +10,31 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<{ type: 'idle' | 'error' | 'success'; message: string }>({
     type: 'idle',
     message: '',
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const result = loginMockUser(email, password);
-    setStatus({
-      type: result.ok ? 'success' : 'error',
-      message: result.message,
-    });
-
-    if (result.ok) {
+    setSubmitting(true);
+    try {
+      const result = await login({ email, password });
+      setStatus({
+        type: 'success',
+        message: result.message,
+      });
       setTimeout(() => {
         setLocation('/perfil');
       }, rememberMe ? 350 : 600);
+    } catch (error) {
+      setStatus({
+        type: 'error',
+        message: getApiErrorMessage(error),
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -76,9 +85,9 @@ export default function Login() {
           </p>
 
           <div className="rounded-lg border border-dashed border-guarawatch-accent/40 bg-guarawatch-bg px-4 py-3 mb-6 text-sm text-guarawatch-text">
-            <p className="font-semibold">Acesso mockado para teste</p>
-            <p>Email: usuario@demo.com</p>
-            <p>Senha: 123456</p>
+            <p className="font-semibold">Acesso com backend real</p>
+            <p>Email seed: comando@cerradoforca.org</p>
+            <p>Senha seed: cerrado123</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -144,9 +153,10 @@ export default function Login() {
             {/* Submit Button */}
             <button
               type="submit"
+              disabled={submitting}
               className="w-full py-2 bg-guarawatch-primary text-white font-heading font-semibold rounded-lg hover:opacity-90 transition-opacity"
             >
-              Entrar
+              {submitting ? 'Entrando...' : 'Entrar'}
             </button>
 
             {status.type !== 'idle' && (
