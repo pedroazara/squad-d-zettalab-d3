@@ -25,7 +25,7 @@ Importante: execute o servidor a partir da pasta api para evitar erro de importa
 
 - Sem configurar variavel de ambiente, a API usa SQLite local em `api/app.db`.
 - Para usar PostgreSQL, defina `DATABASE_URL` antes de subir a API.
-- Na primeira subida com PostgreSQL, a API ingere automaticamente `data/processed/focos/focos_por_municipio_mes.csv` para popular `regions`, `fire_events` e `risk_snapshots`.
+- A ingestao de dados e manual via script de seed para manter startup rapido da API.
 
 ### PostgreSQL local com Docker Compose (recomendado)
 
@@ -135,10 +135,32 @@ try { Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:8000/fires?ano_mes=20
 
 Esperado: `200`, `200`, `422`
 
+## 5.6 Script de predeploy (smoke test automatizado)
+
+Antes de deploy, execute:
+
+```powershell
+cd api
+$env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/cerrado_forca"
+python scripts/predeploy_check.py --seed-runs 1
+```
+
+Opcional para validar idempotencia do seed:
+
+```powershell
+python scripts/predeploy_check.py --seed-runs 2
+```
+
+O script valida:
+- conectividade e tabelas obrigatorias no banco
+- execucao do seed (opcional)
+- contagens minimas de dados essenciais
+- smoke test dos endpoints: `/health`, `/regions`, `/risk`, `/fires`, `/fires/points`, `/auth/*`, `/reports/fire`
+
 ## 6. Observacao de escopo (Sprint 1)
 
-- O endpoint `GET /fires` agora consulta o banco, alimentado pela ingestao automatica do dataset processado.
+- O endpoint `GET /fires` agora consulta o banco, alimentado pelo script manual de seed.
 - `GET /regions` e `GET /risk` tambem passam a ler das tabelas `regions`, `fire_events` e `risk_snapshots`.
-- Nao ha latitude/longitude por foco individual nesta entrega.
+- Ha endpoint de pontos georreferenciados em `GET /fires/points`.
 - Escopo atual prioriza reproducao no repositorio (dados commitaveis).
 - Pontos detalhados ficam para evolucao com base interim/local em sprint seguinte.

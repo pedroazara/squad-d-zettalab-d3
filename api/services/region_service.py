@@ -7,7 +7,16 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from models.entities import ClimateMonthly, FireEvent, Region, RiskSnapshot
+from models.entities import (
+    BurnScarAnnual,
+    BurnScarMonthly,
+    ClimateMonthly,
+    CrossRiskHistorical,
+    FireEvent,
+    PastureRisk,
+    Region,
+    RiskSnapshot,
+)
 from services.risk_service import (
     AggregateRiskInput,
     calculate_aggregate_risk_score,
@@ -20,6 +29,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_FILE = PROJECT_ROOT / "data" / "processed" / "focos" / "focos_por_municipio_mes.csv"
 CLIMATE_FILE = PROJECT_ROOT / "data" / "processed" / "clima" / "inmet_mensal_resumo.csv"
 STATE_RISK_FILE = PROJECT_ROOT / "data" / "processed" / "risco" / "resumo_risco_estados.csv"
+SCAR_MONTHLY_FILE = PROJECT_ROOT / "data" / "processed" / "cicatriz" / "cicatriz_fogo_mensal.csv"
+SCAR_ANNUAL_FILE = PROJECT_ROOT / "data" / "processed" / "cicatriz" / "cicatriz_fogo_anual.csv"
+PASTURE_RISK_FILE = PROJECT_ROOT / "data" / "processed" / "pastagem" / "pastagem_risco.csv"
+RISK_CROSSED_FILE = PROJECT_ROOT / "data" / "processed" / "risco" / "dados_risco_cruzado.csv"
 
 
 @dataclass(frozen=True)
@@ -70,6 +83,56 @@ class StateRiskRecord:
     risco_geral: str
 
 
+@dataclass(frozen=True)
+class BurnScarMonthlyRecord:
+    bioma: str
+    estado: str
+    ano: int
+    mes: int
+    area_queimada_ha: float
+
+
+@dataclass(frozen=True)
+class BurnScarAnnualRecord:
+    bioma: str
+    estado: str
+    ano: int
+    area_queimada_ha: float
+
+
+@dataclass(frozen=True)
+class PastureRiskRecord:
+    bioma: str
+    estado: str
+    uf: str | None
+    ano: int
+    area_pastagem_risco_ha: float
+
+
+@dataclass(frozen=True)
+class CrossRiskRecord:
+    bioma: str
+    estado: str
+    uf: str | None
+    ano: int
+    area_queimada_ha: float
+    area_pastagem_risco_ha: float
+    perc_pastagem_queimada: float
+    nivel_risco_historico: str
+
+
+@dataclass(frozen=True)
+class HybridSupportIndex:
+    scar_monthly: dict[tuple[str, int, int], float]
+    scar_annual: dict[tuple[str, int], float]
+    pasture_annual: dict[tuple[str, int], float]
+    crossed_annual: dict[tuple[str, int], tuple[float, str]]
+    max_scar_monthly: float
+    max_scar_annual: float
+    max_pasture: float
+    max_crossed_perc: float
+
+
 _STATE_COORDINATES: dict[str, tuple[float, float]] = {
     "ACRE": (-9.02, -70.81),
     "ALAGOAS": (-9.57, -36.78),
@@ -118,6 +181,24 @@ def _normalize(value: str) -> str:
         .replace("Ú", "U")
         .replace("Ç", "C")
     )
+
+
+def _fix_text(value: str) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+
+    # Corrige casos comuns de mojibake (UTF-8 lido como Latin-1), mantendo fallback seguro.
+    if "Ã" in raw or "Â" in raw:
+        try:
+            return raw.encode("latin1").decode("utf-8").strip()
+        except UnicodeError:
+            return raw
+    return raw
+
+
+def _normalize_key(value: str) -> str:
+    return _normalize(_fix_text(value))
 
 
 def _state_coordinates(state_name: str) -> tuple[float, float]:
@@ -254,6 +335,141 @@ def _load_state_risk_records() -> tuple[StateRiskRecord, ...]:
     return tuple(records)
 
 
+@lru_cache(maxsize=1)
+def _load_burn_scar_monthly_records() -> tuple[BurnScarMonthlyRecord, ...]:
+    if not SCAR_MONTHLY_FILE.exists():
+        return tuple()
+
+    records: list[BurnScarMonthlyRecord] = []
+    with SCAR_MONTHLY_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
+        reader = csv.DictReader(data_file)
+        for row in reader:
+            records.append(
+                BurnScarMonthlyRecord(
+                    bioma=_fix_text(row.get("bioma", "")),
+                    estado=_fix_text(row.get("estado", "")),
+                    ano=_parse_int(row.get("ano", "0")),
+                    mes=_parse_int(row.get("mes_numero", "0")),
+                    area_queimada_ha=_parse_float(row.get("area_queimada_ha", "0")),
+                )
+            )
+
+    return tuple(records)
+
+
+@lru_cache(maxsize=1)
+def _load_burn_scar_annual_records() -> tuple[BurnScarAnnualRecord, ...]:
+    if not SCAR_ANNUAL_FILE.exists():
+        return tuple()
+
+    records: list[BurnScarAnnualRecord] = []
+    with SCAR_ANNUAL_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
+        reader = csv.DictReader(data_file)
+        for row in reader:
+            records.append(
+                BurnScarAnnualRecord(
+                    bioma=_fix_text(row.get("bioma", "")),
+                    estado=_fix_text(row.get("estado", "")),
+                    ano=_parse_int(row.get("ano", "0")),
+                    area_queimada_ha=_parse_float(row.get("area_queimada_ha", "0")),
+                )
+            )
+
+    return tuple(records)
+
+
+@lru_cache(maxsize=1)
+def _load_pasture_risk_records() -> tuple[PastureRiskRecord, ...]:
+    if not PASTURE_RISK_FILE.exists():
+        return tuple()
+
+    records: list[PastureRiskRecord] = []
+    with PASTURE_RISK_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
+        reader = csv.DictReader(data_file)
+        for row in reader:
+            records.append(
+                PastureRiskRecord(
+                    bioma=_fix_text(row.get("bioma", "")),
+                    estado=_fix_text(row.get("estado", "")),
+                    uf=_fix_text(row.get("uf", "")) or None,
+                    ano=_parse_int(row.get("ano", "0")),
+                    area_pastagem_risco_ha=_parse_float(row.get("area_pastagem_risco_ha", "0")),
+                )
+            )
+
+    return tuple(records)
+
+
+@lru_cache(maxsize=1)
+def _load_cross_risk_records() -> tuple[CrossRiskRecord, ...]:
+    if not RISK_CROSSED_FILE.exists():
+        return tuple()
+
+    records: list[CrossRiskRecord] = []
+    with RISK_CROSSED_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
+        reader = csv.DictReader(data_file)
+        for row in reader:
+            records.append(
+                CrossRiskRecord(
+                    bioma=_fix_text(row.get("bioma", "")),
+                    estado=_fix_text(row.get("estado", "")),
+                    uf=_fix_text(row.get("uf", "")) or None,
+                    ano=_parse_int(row.get("ano", "0")),
+                    area_queimada_ha=_parse_float(row.get("area_queimada_ha", "0")),
+                    area_pastagem_risco_ha=_parse_float(row.get("area_pastagem_risco_ha", "0")),
+                    perc_pastagem_queimada=_parse_float(row.get("perc_pastagem_queimada", "0")),
+                    nivel_risco_historico=_fix_text(row.get("nivel_risco_historico", "")),
+                )
+            )
+
+    return tuple(records)
+
+
+def _load_hybrid_support_index() -> HybridSupportIndex:
+    scar_monthly: dict[tuple[str, int, int], float] = {}
+    scar_annual: dict[tuple[str, int], float] = {}
+    pasture_annual: dict[tuple[str, int], float] = {}
+    crossed_annual: dict[tuple[str, int], tuple[float, str]] = {}
+
+    max_scar_monthly = 1.0
+    max_scar_annual = 1.0
+    max_pasture = 1.0
+    max_crossed_perc = 1.0
+
+    for item in _load_burn_scar_monthly_records():
+        key = (_normalize_key(item.estado), item.ano, item.mes)
+        scar_monthly[key] = max(scar_monthly.get(key, 0.0), item.area_queimada_ha)
+        max_scar_monthly = max(max_scar_monthly, item.area_queimada_ha)
+
+    for item in _load_burn_scar_annual_records():
+        key = (_normalize_key(item.estado), item.ano)
+        scar_annual[key] = max(scar_annual.get(key, 0.0), item.area_queimada_ha)
+        max_scar_annual = max(max_scar_annual, item.area_queimada_ha)
+
+    for item in _load_pasture_risk_records():
+        key = (_normalize_key(item.estado), item.ano)
+        pasture_annual[key] = max(pasture_annual.get(key, 0.0), item.area_pastagem_risco_ha)
+        max_pasture = max(max_pasture, item.area_pastagem_risco_ha)
+
+    for item in _load_cross_risk_records():
+        key = (_normalize_key(item.estado), item.ano)
+        current = crossed_annual.get(key)
+        if current is None or item.perc_pastagem_queimada > current[0]:
+            crossed_annual[key] = (item.perc_pastagem_queimada, item.nivel_risco_historico)
+        max_crossed_perc = max(max_crossed_perc, item.perc_pastagem_queimada)
+
+    return HybridSupportIndex(
+        scar_monthly=scar_monthly,
+        scar_annual=scar_annual,
+        pasture_annual=pasture_annual,
+        crossed_annual=crossed_annual,
+        max_scar_monthly=max_scar_monthly,
+        max_scar_annual=max_scar_annual,
+        max_pasture=max_pasture,
+        max_crossed_perc=max_crossed_perc,
+    )
+
+
 def _build_region_coordinates(record: FocoRecord) -> tuple[float, float]:
     return _state_coordinates(record.estado)
 
@@ -331,21 +547,15 @@ def _upsert_fire_event(db: Session, region_id: int, record: FocoRecord) -> FireE
     return db.scalar(select(FireEvent).where(FireEvent.id == event_id))
 
 
-def _upsert_risk_snapshot(db: Session, region_id: int, record: FocoRecord) -> RiskSnapshot:
-    current_score = calculate_aggregate_risk_score(
-        AggregateRiskInput(
-            quantidade_focos=record.quantidade_focos,
-            risco_fogo_mediano=record.risco_fogo_mediano,
-            frp_mediano=record.frp_mediano,
-        )
-    )
-    tomorrow_score = calculate_aggregate_risk_score(
-        AggregateRiskInput(
-            quantidade_focos=max(1, round(record.quantidade_focos * 1.15)),
-            risco_fogo_mediano=min(1.0, record.risco_fogo_mediano + 0.05),
-            frp_mediano=record.frp_mediano * 1.1,
-        )
-    )
+def _upsert_risk_snapshot(
+    db: Session,
+    region_id: int,
+    record: FocoRecord,
+    support_index: HybridSupportIndex,
+    state_risk_lookup: dict[str, tuple[float, str]],
+) -> RiskSnapshot:
+    current_score = _hybrid_score(record, support_index, state_risk_lookup)
+    tomorrow_score = _hybrid_score(_build_tomorrow_record(record), support_index, state_risk_lookup)
 
     statement = (
         pg_insert(RiskSnapshot)
@@ -392,8 +602,107 @@ def _score_for_state_risk(risco_geral: str) -> tuple[float, str]:
     return 28.0, "baixo"
 
 
+def _normalize_component(value: float, max_value: float) -> float:
+    if max_value <= 0:
+        return 0.0
+    return max(0.0, min(1.0, value / max_value))
+
+
+def _historical_level_to_component(level: str) -> float:
+    normalized = _normalize_key(level)
+    if normalized == "ALTO":
+        return 0.9
+    if normalized == "MEDIO":
+        return 0.6
+    if normalized == "BAIXO":
+        return 0.3
+    return 0.4
+
+
+def _state_fallback_component(state_risk_lookup: dict[str, tuple[float, str]], estado: str) -> float:
+    entry = state_risk_lookup.get(_normalize_key(estado))
+    if entry is None:
+        return 0.4
+    score, _ = entry
+    return max(0.0, min(1.0, score / 100.0))
+
+
+def _hybrid_components(
+    record: FocoRecord,
+    support_index: HybridSupportIndex,
+    state_risk_lookup: dict[str, tuple[float, str]],
+) -> tuple[float, float, float, float]:
+    score_focos = calculate_aggregate_risk_score(
+        AggregateRiskInput(
+            quantidade_focos=record.quantidade_focos,
+            risco_fogo_mediano=record.risco_fogo_mediano,
+            frp_mediano=record.frp_mediano,
+        )
+    ) / 100.0
+
+    state_key = _normalize_key(record.estado)
+    scar_monthly_value = support_index.scar_monthly.get((state_key, record.ano, record.mes), 0.0)
+    scar_annual_value = support_index.scar_annual.get((state_key, record.ano), 0.0)
+    scar_component = _normalize_component(scar_monthly_value, support_index.max_scar_monthly)
+    if scar_component == 0.0:
+        scar_component = _normalize_component(scar_annual_value, support_index.max_scar_annual)
+
+    pasture_value = support_index.pasture_annual.get((state_key, record.ano), 0.0)
+    pasture_component = _normalize_component(pasture_value, support_index.max_pasture)
+
+    historical_entry = support_index.crossed_annual.get((state_key, record.ano))
+    if historical_entry is not None:
+        crossed_perc, level = historical_entry
+        perc_component = _normalize_component(crossed_perc, support_index.max_crossed_perc)
+        level_component = _historical_level_to_component(level)
+        historical_component = (0.65 * perc_component) + (0.35 * level_component)
+    else:
+        historical_component = _state_fallback_component(state_risk_lookup, record.estado)
+
+    return score_focos, scar_component, pasture_component, historical_component
+
+
+def _hybrid_score(
+    record: FocoRecord,
+    support_index: HybridSupportIndex,
+    state_risk_lookup: dict[str, tuple[float, str]],
+) -> float:
+    score_focos, scar_component, pasture_component, historical_component = _hybrid_components(
+        record,
+        support_index,
+        state_risk_lookup,
+    )
+
+    score = 100.0 * (
+        (0.55 * score_focos)
+        + (0.20 * scar_component)
+        + (0.15 * pasture_component)
+        + (0.10 * historical_component)
+    )
+    return round(max(0.0, min(100.0, score)), 2)
+
+
+def _build_tomorrow_record(record: FocoRecord) -> FocoRecord:
+    return FocoRecord(
+        estado=record.estado,
+        municipio=record.municipio,
+        ano=record.ano,
+        mes=record.mes,
+        ano_mes=record.ano_mes,
+        quantidade_focos=max(1, round(record.quantidade_focos * 1.15)),
+        risco_fogo_mediano=min(1.0, record.risco_fogo_mediano + 0.05),
+        frp_mediano=record.frp_mediano * 1.1,
+        bioma=record.bioma,
+    )
+
+
 def sync_foco_dataset(db: Session) -> None:
     records = _load_records()
+    support_index = _load_hybrid_support_index()
+
+    state_risk_lookup: dict[str, tuple[float, str]] = {}
+    for item in _load_state_risk_records():
+        state_risk_lookup[_normalize_key(item.estado)] = _score_for_state_risk(item.risco_geral)
 
     region_lookup: dict[tuple[str, str], Region] = {}
 
@@ -413,7 +722,7 @@ def sync_foco_dataset(db: Session) -> None:
                 region.longitude = longitude
 
         _upsert_fire_event(db, region.id, record)
-        _upsert_risk_snapshot(db, region.id, record)
+        _upsert_risk_snapshot(db, region.id, record, support_index, state_risk_lookup)
 
     db.commit()
 
@@ -440,6 +749,104 @@ def sync_climate_dataset(db: Session) -> None:
                     "temp_min_c": record.temp_min_c,
                     "umidade_min_pct": record.umidade_min_pct,
                     "precipitacao_mm": record.precipitacao_mm,
+                },
+            )
+        )
+        db.execute(statement)
+
+    db.commit()
+
+
+def sync_burn_scar_dataset(db: Session) -> None:
+    monthly_records = _load_burn_scar_monthly_records()
+    annual_records = _load_burn_scar_annual_records()
+
+    for record in monthly_records:
+        statement = (
+            pg_insert(BurnScarMonthly)
+            .values(
+                estado=record.estado,
+                bioma=record.bioma,
+                ano=record.ano,
+                mes=record.mes,
+                area_queimada_ha=record.area_queimada_ha,
+            )
+            .on_conflict_do_update(
+                index_elements=[BurnScarMonthly.estado, BurnScarMonthly.bioma, BurnScarMonthly.ano, BurnScarMonthly.mes],
+                set_={"area_queimada_ha": record.area_queimada_ha},
+            )
+        )
+        db.execute(statement)
+
+    for record in annual_records:
+        statement = (
+            pg_insert(BurnScarAnnual)
+            .values(
+                estado=record.estado,
+                bioma=record.bioma,
+                ano=record.ano,
+                area_queimada_ha=record.area_queimada_ha,
+            )
+            .on_conflict_do_update(
+                index_elements=[BurnScarAnnual.estado, BurnScarAnnual.bioma, BurnScarAnnual.ano],
+                set_={"area_queimada_ha": record.area_queimada_ha},
+            )
+        )
+        db.execute(statement)
+
+    db.commit()
+
+
+def sync_pasture_risk_dataset(db: Session) -> None:
+    records = _load_pasture_risk_records()
+
+    for record in records:
+        statement = (
+            pg_insert(PastureRisk)
+            .values(
+                estado=record.estado,
+                uf=record.uf,
+                bioma=record.bioma,
+                ano=record.ano,
+                area_pastagem_risco_ha=record.area_pastagem_risco_ha,
+            )
+            .on_conflict_do_update(
+                index_elements=[PastureRisk.estado, PastureRisk.bioma, PastureRisk.ano],
+                set_={
+                    "uf": record.uf,
+                    "area_pastagem_risco_ha": record.area_pastagem_risco_ha,
+                },
+            )
+        )
+        db.execute(statement)
+
+    db.commit()
+
+
+def sync_cross_risk_dataset(db: Session) -> None:
+    records = _load_cross_risk_records()
+
+    for record in records:
+        statement = (
+            pg_insert(CrossRiskHistorical)
+            .values(
+                estado=record.estado,
+                uf=record.uf,
+                bioma=record.bioma,
+                ano=record.ano,
+                area_queimada_ha=record.area_queimada_ha,
+                area_pastagem_risco_ha=record.area_pastagem_risco_ha,
+                perc_pastagem_queimada=record.perc_pastagem_queimada,
+                nivel_risco_historico=record.nivel_risco_historico,
+            )
+            .on_conflict_do_update(
+                index_elements=[CrossRiskHistorical.estado, CrossRiskHistorical.bioma, CrossRiskHistorical.ano],
+                set_={
+                    "uf": record.uf,
+                    "area_queimada_ha": record.area_queimada_ha,
+                    "area_pastagem_risco_ha": record.area_pastagem_risco_ha,
+                    "perc_pastagem_queimada": record.perc_pastagem_queimada,
+                    "nivel_risco_historico": record.nivel_risco_historico,
                 },
             )
         )
@@ -495,16 +902,7 @@ def sync_state_risk_dataset(db: Session) -> None:
                 risco_amanha=risco,
                 tendencia="estavel",
             )
-            .on_conflict_do_update(
-                index_elements=[RiskSnapshot.region_id, RiskSnapshot.ano_mes],
-                set_={
-                    "score": score,
-                    "risco": risco,
-                    "score_amanha": score,
-                    "risco_amanha": risco,
-                    "tendencia": "estavel",
-                },
-            )
+            .on_conflict_do_nothing(index_elements=[RiskSnapshot.region_id, RiskSnapshot.ano_mes])
         )
         db.execute(statement)
 

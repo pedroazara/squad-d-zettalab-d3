@@ -86,3 +86,57 @@ class RiskSnapshot(Base):
     risco_amanha: Mapped[str] = mapped_column(String(20), nullable=False)
     tendencia: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BurnScarMonthly(Base):
+    __tablename__ = "burn_scar_monthly"
+    __table_args__ = (UniqueConstraint("estado", "bioma", "ano", "mes", name="uq_burn_scar_monthly_scope"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    estado: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    bioma: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    ano: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    mes: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    area_queimada_ha: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BurnScarAnnual(Base):
+    __tablename__ = "burn_scar_annual"
+    __table_args__ = (UniqueConstraint("estado", "bioma", "ano", name="uq_burn_scar_annual_scope"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    estado: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    bioma: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    ano: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    area_queimada_ha: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PastureRisk(Base):
+    __tablename__ = "pasture_risk"
+    __table_args__ = (UniqueConstraint("estado", "bioma", "ano", name="uq_pasture_risk_scope"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    estado: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    uf: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    bioma: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    ano: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    area_pastagem_risco_ha: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CrossRiskHistorical(Base):
+    __tablename__ = "cross_risk_historical"
+    __table_args__ = (UniqueConstraint("estado", "bioma", "ano", name="uq_cross_risk_historical_scope"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    estado: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    uf: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    bioma: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    ano: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    area_queimada_ha: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    area_pastagem_risco_ha: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    perc_pastagem_queimada: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    nivel_risco_historico: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
