@@ -2,3 +2,4 @@
 uvicorn
 sqlalchemy
 email-validator
+psycopg[binary]

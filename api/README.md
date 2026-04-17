@@ -21,9 +21,43 @@ pip install -r api/requirements.txt
 
 Importante: execute o servidor a partir da pasta api para evitar erro de importacao de modulos locais.
 
+### Configuracao de banco
+
+- Sem configurar variavel de ambiente, a API usa SQLite local em `api/app.db`.
+- Para usar PostgreSQL, defina `DATABASE_URL` antes de subir a API.
+
+### PostgreSQL local com Docker Compose (recomendado)
+
+Na raiz do projeto, suba o banco:
+
+```bash
+docker compose up -d postgres
+docker compose ps
+```
+
+Depois, no PowerShell, configure a conexao da API:
+
+```powershell
+$env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/cerrado_forca"
+```
+
+Opcional: use o arquivo de exemplo em `api/.env.example` para referencia de variaveis.
+
+Exemplo (PowerShell):
+
+```powershell
+$env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/cerrado_forca"
+```
+
 ```bash
 cd api
 uvicorn main:app --reload
+```
+
+Para parar o banco local depois:
+
+```bash
+docker compose down
 ```
 
 API: http://127.0.0.1:8000  
