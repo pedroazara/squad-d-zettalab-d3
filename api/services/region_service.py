@@ -3,6 +3,11 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from sqlalchemy import desc, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
+
+from models.entities import ClimateMonthly, FireEvent, Region, RiskSnapshot
 from services.risk_service import (
     AggregateRiskInput,
     calculate_aggregate_risk_score,
@@ -13,13 +18,14 @@ from services.risk_service import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_FILE = PROJECT_ROOT / "data" / "processed" / "focos" / "focos_por_municipio_mes.csv"
+CLIMATE_FILE = PROJECT_ROOT / "data" / "processed" / "clima" / "inmet_mensal_resumo.csv"
+STATE_RISK_FILE = PROJECT_ROOT / "data" / "processed" / "risco" / "resumo_risco_estados.csv"
 
 
 @dataclass(frozen=True)
-class RiskRegionRecord:
-    id: int
-    municipio: str
+class FocoRecord:
     estado: str
+    municipio: str
     ano: int
     mes: int
     ano_mes: str
@@ -28,9 +34,40 @@ class RiskRegionRecord:
     frp_mediano: float
     bioma: str
 
+
+@dataclass(frozen=True)
+class RegionContext:
+    region_id: int
+    estado: str
+    municipio: str
+    ano: int
+    mes: int
+    ano_mes: str
+    quantidade_focos: int
+    risco_fogo_mediano: float
+    frp_mediano: float
+    bioma: str | None
+
     @property
     def nome(self) -> str:
         return f"{self.municipio} - {self.estado} ({self.ano_mes})"
+
+
+@dataclass(frozen=True)
+class ClimateRecord:
+    ano: int
+    mes: int
+    estacao_codigo: str
+    temp_max_c: float | None
+    temp_min_c: float | None
+    umidade_min_pct: float | None
+    precipitacao_mm: float | None
+
+
+@dataclass(frozen=True)
+class StateRiskRecord:
+    estado: str
+    risco_geral: str
 
 
 _STATE_COORDINATES: dict[str, tuple[float, float]] = {
@@ -88,16 +125,16 @@ def _state_coordinates(state_name: str) -> tuple[float, float]:
     return _STATE_COORDINATES.get(_normalize(state_name), fallback)
 
 
-def _build_region_snapshot(region: RiskRegionRecord) -> dict[str, float | int | str]:
+def _build_region_snapshot(region: RegionContext) -> dict[str, float | int | str]:
     base_lat, base_lng = _state_coordinates(region.estado)
-    offset = (region.id % 9) * 0.03
+    offset = (region.region_id % 9) * 0.03
     temperatura = round(24 + (region.risco_fogo_mediano * 12) + (region.frp_mediano / 180), 1)
     umidade = round(max(12.0, 75 - (region.risco_fogo_mediano * 50)), 1)
     vento = round(6 + min(24.0, region.frp_mediano / 12), 1)
     precipitacao = round(max(0.0, 120 - (region.risco_fogo_mediano * 110)), 1)
 
     return {
-        "id": region.id,
+        "id": region.region_id,
         "nome": region.nome,
         "latitude": round(base_lat + offset, 4),
         "longitude": round(base_lng - offset, 4),
@@ -107,6 +144,25 @@ def _build_region_snapshot(region: RiskRegionRecord) -> dict[str, float | int | 
         "precipitacao": precipitacao,
         "focos_calor": region.quantidade_focos,
     }
+
+
+def _build_region_snapshot_with_climate(
+    region: RegionContext,
+    avg_temp: float | None,
+    avg_humidity: float | None,
+    avg_precipitation: float | None,
+) -> dict[str, float | int | str]:
+    snapshot = _build_region_snapshot(region)
+    offset = ((region.region_id % 5) - 2) * 0.4
+
+    if avg_temp is not None:
+        snapshot["temperatura"] = round(avg_temp + offset, 1)
+    if avg_humidity is not None:
+        snapshot["umidade"] = round(max(5.0, min(100.0, avg_humidity - (offset * 2))), 1)
+    if avg_precipitation is not None:
+        snapshot["precipitacao"] = round(max(0.0, avg_precipitation - (offset * 3)), 1)
+
+    return snapshot
 
 
 def _parse_int(value: str) -> int:
@@ -121,19 +177,25 @@ def _parse_float(value: str) -> float:
     return float(normalized_value)
 
 
+def _parse_nullable_float(value: str) -> float | None:
+    normalized_value = value.strip()
+    if not normalized_value:
+        return None
+    return float(normalized_value)
+
+
 @lru_cache(maxsize=1)
-def _load_records() -> tuple[RiskRegionRecord, ...]:
+def _load_records() -> tuple[FocoRecord, ...]:
     if not DATA_FILE.exists():
         raise FileNotFoundError(f"Arquivo de dados nao encontrado: {DATA_FILE}")
 
-    records: list[RiskRegionRecord] = []
+    records: list[FocoRecord] = []
 
     with DATA_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
         reader = csv.DictReader(data_file)
-        for index, row in enumerate(reader, start=1):
+        for row in reader:
             records.append(
-                RiskRegionRecord(
-                    id=index,
+                FocoRecord(
                     municipio=row["Municipio_Clean"].strip(),
                     estado=row["Estado_Clean"].strip(),
                     ano=_parse_int(row["Ano"]),
@@ -149,22 +211,378 @@ def _load_records() -> tuple[RiskRegionRecord, ...]:
     return tuple(records)
 
 
-def list_regions() -> list[RiskRegionRecord]:
-    return list(_load_records())
+@lru_cache(maxsize=1)
+def _load_climate_records() -> tuple[ClimateRecord, ...]:
+    if not CLIMATE_FILE.exists():
+        return tuple()
+
+    records: list[ClimateRecord] = []
+    with CLIMATE_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
+        reader = csv.DictReader(data_file)
+        for row in reader:
+            records.append(
+                ClimateRecord(
+                    ano=_parse_int(row["ano"]),
+                    mes=_parse_int(row["mes"]),
+                    estacao_codigo=row["estacao_codigo"].strip(),
+                    temp_max_c=_parse_nullable_float(row.get("temp_max_c", "")),
+                    temp_min_c=_parse_nullable_float(row.get("temp_min_c", "")),
+                    umidade_min_pct=_parse_nullable_float(row.get("umidade_min_pct", "")),
+                    precipitacao_mm=_parse_nullable_float(row.get("precipitacao_mm", "")),
+                )
+            )
+
+    return tuple(records)
 
 
-def list_region_snapshots() -> list[dict[str, float | int | str]]:
-    return [_build_region_snapshot(region) for region in _load_records()]
+@lru_cache(maxsize=1)
+def _load_state_risk_records() -> tuple[StateRiskRecord, ...]:
+    if not STATE_RISK_FILE.exists():
+        return tuple()
+
+    records: list[StateRiskRecord] = []
+    with STATE_RISK_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
+        reader = csv.DictReader(data_file)
+        for row in reader:
+            records.append(
+                StateRiskRecord(
+                    estado=row["estado"].strip(),
+                    risco_geral=row["risco_geral"].strip(),
+                )
+            )
+
+    return tuple(records)
 
 
-def get_region(region_id: int) -> RiskRegionRecord | None:
-    for region in _load_records():
-        if region.id == region_id:
-            return region
-    return None
+def _build_region_coordinates(record: FocoRecord) -> tuple[float, float]:
+    return _state_coordinates(record.estado)
 
 
-def build_risk_payload(region: RiskRegionRecord) -> dict[str, object]:
+def _upsert_region(db: Session, record: FocoRecord) -> Region:
+    latitude, longitude = _build_region_coordinates(record)
+    statement = (
+        pg_insert(Region)
+        .values(
+            estado=record.estado,
+            municipio=record.municipio,
+            bioma_predominante=record.bioma or None,
+            latitude=latitude,
+            longitude=longitude,
+        )
+        .on_conflict_do_nothing(index_elements=[Region.estado, Region.municipio])
+        .returning(Region.id)
+    )
+
+    inserted_id = db.execute(statement).scalar_one_or_none()
+    if inserted_id is not None:
+        return db.scalar(select(Region).where(Region.id == inserted_id))
+
+    existing = db.scalar(
+        select(Region).where(
+            func.upper(Region.estado) == record.estado.upper(),
+            func.upper(Region.municipio) == record.municipio.upper(),
+        )
+    )
+    if existing is None:
+        raise RuntimeError(f"Nao foi possivel localizar a regiao {record.estado} / {record.municipio}")
+
+    if existing.bioma_predominante is None and record.bioma:
+        existing.bioma_predominante = record.bioma
+    if existing.latitude is None or existing.longitude is None:
+        existing.latitude = latitude
+        existing.longitude = longitude
+    return existing
+
+
+def _upsert_fire_event(db: Session, region_id: int, record: FocoRecord) -> FireEvent:
+    statement = (
+        pg_insert(FireEvent)
+        .values(
+            region_id=region_id,
+            ano=record.ano,
+            mes=record.mes,
+            ano_mes=record.ano_mes,
+            quantidade_focos=record.quantidade_focos,
+            risco_fogo_mediano=record.risco_fogo_mediano,
+            frp_mediano=record.frp_mediano,
+        )
+        .on_conflict_do_update(
+            index_elements=[FireEvent.region_id, FireEvent.ano_mes],
+            set_={
+                "ano": record.ano,
+                "mes": record.mes,
+                "quantidade_focos": record.quantidade_focos,
+                "risco_fogo_mediano": record.risco_fogo_mediano,
+                "frp_mediano": record.frp_mediano,
+            },
+        )
+        .returning(FireEvent.id)
+    )
+
+    event_id = db.execute(statement).scalar_one_or_none()
+    if event_id is None:
+        existing_event = db.scalar(
+            select(FireEvent).where(FireEvent.region_id == region_id, FireEvent.ano_mes == record.ano_mes)
+        )
+        if existing_event is None:
+            raise RuntimeError(f"Nao foi possivel localizar o evento {region_id} / {record.ano_mes}")
+        return existing_event
+
+    return db.scalar(select(FireEvent).where(FireEvent.id == event_id))
+
+
+def _upsert_risk_snapshot(db: Session, region_id: int, record: FocoRecord) -> RiskSnapshot:
+    current_score = calculate_aggregate_risk_score(
+        AggregateRiskInput(
+            quantidade_focos=record.quantidade_focos,
+            risco_fogo_mediano=record.risco_fogo_mediano,
+            frp_mediano=record.frp_mediano,
+        )
+    )
+    tomorrow_score = calculate_aggregate_risk_score(
+        AggregateRiskInput(
+            quantidade_focos=max(1, round(record.quantidade_focos * 1.15)),
+            risco_fogo_mediano=min(1.0, record.risco_fogo_mediano + 0.05),
+            frp_mediano=record.frp_mediano * 1.1,
+        )
+    )
+
+    statement = (
+        pg_insert(RiskSnapshot)
+        .values(
+            region_id=region_id,
+            ano_mes=record.ano_mes,
+            score=current_score,
+            risco=classify_risk(current_score),
+            score_amanha=tomorrow_score,
+            risco_amanha=classify_risk(tomorrow_score),
+            tendencia=forecast_tendency(current_score, tomorrow_score),
+        )
+        .on_conflict_do_update(
+            index_elements=[RiskSnapshot.region_id, RiskSnapshot.ano_mes],
+            set_={
+                "score": current_score,
+                "risco": classify_risk(current_score),
+                "score_amanha": tomorrow_score,
+                "risco_amanha": classify_risk(tomorrow_score),
+                "tendencia": forecast_tendency(current_score, tomorrow_score),
+            },
+        )
+        .returning(RiskSnapshot.id)
+    )
+
+    snapshot_id = db.execute(statement).scalar_one_or_none()
+    if snapshot_id is None:
+        existing_snapshot = db.scalar(
+            select(RiskSnapshot).where(RiskSnapshot.region_id == region_id, RiskSnapshot.ano_mes == record.ano_mes)
+        )
+        if existing_snapshot is None:
+            raise RuntimeError(f"Nao foi possivel localizar o risco {region_id} / {record.ano_mes}")
+        return existing_snapshot
+
+    return db.scalar(select(RiskSnapshot).where(RiskSnapshot.id == snapshot_id))
+
+
+def _score_for_state_risk(risco_geral: str) -> tuple[float, str]:
+    normalized = _normalize(risco_geral)
+    if normalized == "ALTO":
+        return 82.0, "alto"
+    if normalized == "MEDIO":
+        return 58.0, "medio"
+    return 28.0, "baixo"
+
+
+def sync_foco_dataset(db: Session) -> None:
+    records = _load_records()
+
+    region_lookup: dict[tuple[str, str], Region] = {}
+
+    for record in records:
+        key = (record.estado.upper(), record.municipio.upper())
+        region = region_lookup.get(key)
+
+        if region is None:
+            region = _upsert_region(db, record)
+            region_lookup[key] = region
+        else:
+            if region.bioma_predominante is None and record.bioma:
+                region.bioma_predominante = record.bioma
+            if region.latitude is None or region.longitude is None:
+                latitude, longitude = _build_region_coordinates(record)
+                region.latitude = latitude
+                region.longitude = longitude
+
+        _upsert_fire_event(db, region.id, record)
+        _upsert_risk_snapshot(db, region.id, record)
+
+    db.commit()
+
+
+def sync_climate_dataset(db: Session) -> None:
+    records = _load_climate_records()
+
+    for record in records:
+        statement = (
+            pg_insert(ClimateMonthly)
+            .values(
+                estacao_codigo=record.estacao_codigo,
+                ano=record.ano,
+                mes=record.mes,
+                temp_max_c=record.temp_max_c,
+                temp_min_c=record.temp_min_c,
+                umidade_min_pct=record.umidade_min_pct,
+                precipitacao_mm=record.precipitacao_mm,
+            )
+            .on_conflict_do_update(
+                index_elements=[ClimateMonthly.estacao_codigo, ClimateMonthly.ano, ClimateMonthly.mes],
+                set_={
+                    "temp_max_c": record.temp_max_c,
+                    "temp_min_c": record.temp_min_c,
+                    "umidade_min_pct": record.umidade_min_pct,
+                    "precipitacao_mm": record.precipitacao_mm,
+                },
+            )
+        )
+        db.execute(statement)
+
+    db.commit()
+
+
+def sync_state_risk_dataset(db: Session) -> None:
+    records = _load_state_risk_records()
+    if not records:
+        return
+
+    severity_order = {"baixo": 1, "medio": 2, "alto": 3}
+    state_levels: dict[str, tuple[float, str]] = {}
+    for record in records:
+        state_key = _normalize(record.estado)
+        score, risco = _score_for_state_risk(record.risco_geral)
+        current = state_levels.get(state_key)
+        if current is None or severity_order[risco] > severity_order[current[1]]:
+            state_levels[state_key] = (score, risco)
+
+    latest_period_by_region = {
+        region_id: ano_mes
+        for region_id, ano_mes in db.execute(
+            select(FireEvent.region_id, func.max(FireEvent.ano_mes)).group_by(FireEvent.region_id)
+        ).all()
+        if ano_mes is not None
+    }
+
+    if not latest_period_by_region:
+        return
+
+    regions = db.execute(select(Region)).scalars().all()
+    for region in regions:
+        latest_period = latest_period_by_region.get(region.id)
+        if latest_period is None:
+            continue
+
+        risk_data = state_levels.get(_normalize(region.estado))
+        if risk_data is None:
+            continue
+
+        score, risco = risk_data
+        statement = (
+            pg_insert(RiskSnapshot)
+            .values(
+                region_id=region.id,
+                ano_mes=latest_period,
+                score=score,
+                risco=risco,
+                score_amanha=score,
+                risco_amanha=risco,
+                tendencia="estavel",
+            )
+            .on_conflict_do_update(
+                index_elements=[RiskSnapshot.region_id, RiskSnapshot.ano_mes],
+                set_={
+                    "score": score,
+                    "risco": risco,
+                    "score_amanha": score,
+                    "risco_amanha": risco,
+                    "tendencia": "estavel",
+                },
+            )
+        )
+        db.execute(statement)
+
+    db.commit()
+
+
+def _context_from_row(region: Region, fire_event: FireEvent) -> RegionContext:
+    return RegionContext(
+        region_id=region.id,
+        estado=region.estado,
+        municipio=region.municipio,
+        ano=fire_event.ano,
+        mes=fire_event.mes,
+        ano_mes=fire_event.ano_mes,
+        quantidade_focos=fire_event.quantidade_focos,
+        risco_fogo_mediano=fire_event.risco_fogo_mediano,
+        frp_mediano=fire_event.frp_mediano,
+        bioma=region.bioma_predominante,
+    )
+
+
+def list_regions(db: Session, ano_mes: str | None = None) -> list[RegionContext]:
+    query = select(Region, FireEvent).join(FireEvent, FireEvent.region_id == Region.id)
+
+    if ano_mes is not None:
+        query = query.where(FireEvent.ano_mes == ano_mes)
+
+    query = query.order_by(FireEvent.ano_mes, Region.estado, Region.municipio)
+
+    return [_context_from_row(region, fire_event) for region, fire_event in db.execute(query).all()]
+
+
+def list_region_snapshots(db: Session) -> list[dict[str, float | int | str]]:
+    regions = list_regions(db)
+    if not regions:
+        return []
+
+    latest_period = db.execute(select(func.max(ClimateMonthly.ano), func.max(ClimateMonthly.mes))).first()
+    avg_temp = None
+    avg_humidity = None
+    avg_precipitation = None
+
+    if latest_period is not None:
+        climate_year, climate_month = latest_period
+        if climate_year is not None and climate_month is not None:
+            climate_agg = db.execute(
+                select(
+                    func.avg(ClimateMonthly.temp_max_c),
+                    func.avg(ClimateMonthly.umidade_min_pct),
+                    func.avg(ClimateMonthly.precipitacao_mm),
+                ).where(ClimateMonthly.ano == climate_year, ClimateMonthly.mes == climate_month)
+            ).first()
+            if climate_agg is not None:
+                avg_temp, avg_humidity, avg_precipitation = climate_agg
+
+    return [
+        _build_region_snapshot_with_climate(region, avg_temp, avg_humidity, avg_precipitation)
+        for region in regions
+    ]
+
+
+def get_region(db: Session, region_id: int, ano_mes: str | None = None) -> RegionContext | None:
+    query = select(Region, FireEvent).join(FireEvent, FireEvent.region_id == Region.id).where(Region.id == region_id)
+
+    if ano_mes is not None:
+        query = query.where(FireEvent.ano_mes == ano_mes)
+    else:
+        query = query.order_by(desc(FireEvent.ano_mes))
+
+    row = db.execute(query.limit(1)).first()
+    if row is None:
+        return None
+
+    region, fire_event = row
+    return _context_from_row(region, fire_event)
+
+
+def build_risk_payload(region: RegionContext) -> dict[str, object]:
     current_score = calculate_aggregate_risk_score(
         AggregateRiskInput(
             quantidade_focos=region.quantidade_focos,
@@ -182,7 +600,7 @@ def build_risk_payload(region: RiskRegionRecord) -> dict[str, object]:
     )
 
     return {
-        "regiao_id": region.id,
+        "regiao_id": region.region_id,
         "regiao_nome": region.nome,
         "score": current_score,
         "risco": classify_risk(current_score),
@@ -190,3 +608,84 @@ def build_risk_payload(region: RiskRegionRecord) -> dict[str, object]:
         "risco_amanha": classify_risk(tomorrow_score),
         "tendencia": forecast_tendency(current_score, tomorrow_score),
     }
+
+
+def list_risk_payloads(
+    db: Session,
+    region_id: int | None = None,
+    ano_mes: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    query = select(Region, RiskSnapshot).join(RiskSnapshot, RiskSnapshot.region_id == Region.id)
+
+    if region_id is not None:
+        query = query.where(Region.id == region_id)
+
+    if ano_mes is not None:
+        query = query.where(RiskSnapshot.ano_mes == ano_mes)
+
+    query = query.order_by(RiskSnapshot.ano_mes.desc(), Region.estado, Region.municipio).offset(offset).limit(limit)
+
+    payloads: list[dict[str, object]] = []
+    for region, snapshot in db.execute(query).all():
+        payloads.append(
+            {
+                "regiao_id": region.id,
+                "regiao_nome": f"{region.municipio} - {region.estado} ({snapshot.ano_mes})",
+                "score": snapshot.score,
+                "risco": snapshot.risco,
+                "score_amanha": snapshot.score_amanha,
+                "risco_amanha": snapshot.risco_amanha,
+                "tendencia": snapshot.tendencia,
+            }
+        )
+
+    return payloads
+
+
+def list_fire_items(
+    db: Session,
+    ano_mes: str | None = None,
+    estado: str | None = None,
+    municipio: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    query = select(Region, FireEvent).join(FireEvent, FireEvent.region_id == Region.id)
+
+    if ano_mes is not None:
+        query = query.where(FireEvent.ano_mes == ano_mes)
+
+    if estado is not None:
+        query = query.where(func.upper(Region.estado) == estado.strip().upper())
+
+    if municipio is not None:
+        query = query.where(func.upper(Region.municipio) == municipio.strip().upper())
+
+    query = query.order_by(FireEvent.ano_mes.desc(), Region.estado, Region.municipio).offset(offset).limit(limit)
+
+    records: list[dict[str, object]] = []
+    for region, fire_event in db.execute(query).all():
+        score = calculate_aggregate_risk_score(
+            AggregateRiskInput(
+                quantidade_focos=fire_event.quantidade_focos,
+                risco_fogo_mediano=fire_event.risco_fogo_mediano,
+                frp_mediano=fire_event.frp_mediano,
+            )
+        )
+        records.append(
+            {
+                "id": fire_event.id,
+                "estado": region.estado,
+                "municipio": region.municipio,
+                "ano_mes": fire_event.ano_mes,
+                "quantidade_focos": fire_event.quantidade_focos,
+                "risco_fogo_mediano": fire_event.risco_fogo_mediano,
+                "frp_mediano": fire_event.frp_mediano,
+                "score": score,
+                "risco": classify_risk(score),
+            }
+        )
+
+    return records

@@ -2,15 +2,17 @@ import csv
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-from services.risk_service import AggregateRiskInput, calculate_aggregate_risk_score, classify_risk
+from db import get_db
+from services.region_service import list_fire_items
 
 router = APIRouter(prefix="/fires", tags=["fires"])
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_FILE = PROJECT_ROOT / "data" / "processed" / "focos" / "focos_por_municipio_mes.csv"
+POINTS_DATA_FILE = PROJECT_ROOT / "data" / "interim" / "focos" / "focos_limpos_detalhados.csv"
 
 
 class FireMapItem(BaseModel):
@@ -25,8 +27,18 @@ class FireMapItem(BaseModel):
     risco: str
 
 
-def _parse_int(value: str) -> int:
-    return int(float(value))
+class FirePointItem(BaseModel):
+    id: int
+    data_hora: str
+    satelite: str
+    estado: str
+    municipio: str
+    bioma: str
+    risco_fogo: float
+    frp: float
+    latitude: float
+    longitude: float
+    ano_mes: str
 
 
 def _parse_float(value: str) -> float:
@@ -37,37 +49,36 @@ def _parse_float(value: str) -> float:
 
 
 @lru_cache(maxsize=1)
-def _load_data() -> list[FireMapItem]:
-    records: list[FireMapItem] = []
+def _load_fire_points() -> list[FirePointItem]:
+    if not POINTS_DATA_FILE.exists():
+        raise FileNotFoundError(f"Arquivo de dados nao encontrado: {POINTS_DATA_FILE}")
 
-    with DATA_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
+    points: list[FirePointItem] = []
+    with POINTS_DATA_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
         reader = csv.DictReader(data_file)
         for index, row in enumerate(reader, start=1):
-            quantidade_focos = _parse_int(row["Quantidade_Focos"])
-            risco_fogo_mediano = _parse_float(row["RiscoFogo_Mediano"])
-            frp_mediano = _parse_float(row["FRP_Mediano"])
-            score = calculate_aggregate_risk_score(
-                AggregateRiskInput(
-                    quantidade_focos=quantidade_focos,
-                    risco_fogo_mediano=risco_fogo_mediano,
-                    frp_mediano=frp_mediano,
-                )
-            )
-            records.append(
-                FireMapItem(
+            latitude = row.get("Latitude", "").strip()
+            longitude = row.get("Longitude", "").strip()
+            if not latitude or not longitude:
+                continue
+
+            points.append(
+                FirePointItem(
                     id=index,
-                    estado=row["Estado_Clean"].strip(),
-                    municipio=row["Municipio_Clean"].strip(),
-                    ano_mes=row["AnoMes"].strip(),
-                    quantidade_focos=quantidade_focos,
-                    risco_fogo_mediano=risco_fogo_mediano,
-                    frp_mediano=frp_mediano,
-                    score=score,
-                    risco=classify_risk(score),
+                    data_hora=row.get("DataHora", "").strip(),
+                    satelite=row.get("Satelite", "").strip(),
+                    estado=row.get("Estado_Clean", row.get("Estado", "")).strip(),
+                    municipio=row.get("Municipio_Clean", row.get("Municipio", "")).strip(),
+                    bioma=row.get("Bioma", "").strip(),
+                    risco_fogo=_parse_float(row.get("RiscoFogo", "0")),
+                    frp=_parse_float(row.get("FRP", "0")),
+                    latitude=float(latitude),
+                    longitude=float(longitude),
+                    ano_mes=row.get("AnoMes", "").strip(),
                 )
             )
 
-    return records
+    return points
 
 
 @router.get(
@@ -81,23 +92,40 @@ def _load_data() -> list[FireMapItem]:
     ),
 )
 def get_fires(
+    db: Session = Depends(get_db),
     ano_mes: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
     estado: str | None = Query(default=None),
     municipio: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ) -> list[FireMapItem]:
-    records = _load_data()
+    return [FireMapItem(**row) for row in list_fire_items(db, ano_mes, estado, municipio, limit, offset)]
+
+
+@router.get(
+    "/points",
+    response_model=list[FirePointItem],
+    summary="Lista focos georreferenciados para mapa de pontos",
+    description="Retorna focos com latitude/longitude para visualizacao direta em mapa de marcadores/cluster.",
+)
+def get_fire_points(
+    ano_mes: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    estado: str | None = Query(default=None),
+    municipio: str | None = Query(default=None),
+    limit: int = Query(default=1000, ge=1, le=10000),
+    offset: int = Query(default=0, ge=0),
+) -> list[FirePointItem]:
+    points = _load_fire_points()
 
     if ano_mes is not None:
-        records = [item for item in records if item.ano_mes == ano_mes]
+        points = [point for point in points if point.ano_mes == ano_mes]
 
     if estado is not None:
         state_filter = estado.strip().upper()
-        records = [item for item in records if item.estado.upper() == state_filter]
+        points = [point for point in points if point.estado.upper() == state_filter]
 
     if municipio is not None:
         city_filter = municipio.strip().upper()
-        records = [item for item in records if item.municipio.upper() == city_filter]
+        points = [point for point in points if point.municipio.upper() == city_filter]
 
-    return records[offset : offset + limit]
+    return points[offset : offset + limit]

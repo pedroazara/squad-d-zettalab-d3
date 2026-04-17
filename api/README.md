@@ -25,6 +25,7 @@ Importante: execute o servidor a partir da pasta api para evitar erro de importa
 
 - Sem configurar variavel de ambiente, a API usa SQLite local em `api/app.db`.
 - Para usar PostgreSQL, defina `DATABASE_URL` antes de subir a API.
+- Na primeira subida com PostgreSQL, a API ingere automaticamente `data/processed/focos/focos_por_municipio_mes.csv` para popular `regions`, `fire_events` e `risk_snapshots`.
 
 ### PostgreSQL local com Docker Compose (recomendado)
 
@@ -71,6 +72,7 @@ Swagger: http://127.0.0.1:8000/docs
 - `GET /regions`
 - `GET /risk` (filtros: `region_id`, `ano_mes`, `limit`, `offset`)
 - `GET /fires` (mapa agregado por municipio/mes; filtros: `ano_mes`, `estado`, `municipio`, `limit`, `offset`)
+- `GET /fires/points` (focos georreferenciados com `latitude` e `longitude`; filtros: `ano_mes`, `estado`, `municipio`, `limit`, `offset`)
 - `POST /reports/fire`
 - `GET /reports/fire`
 
@@ -135,7 +137,8 @@ Esperado: `200`, `200`, `422`
 
 ## 6. Observacao de escopo (Sprint 1)
 
-- O endpoint `GET /fires` usa base processada por municipio/mes.
+- O endpoint `GET /fires` agora consulta o banco, alimentado pela ingestao automatica do dataset processado.
+- `GET /regions` e `GET /risk` tambem passam a ler das tabelas `regions`, `fire_events` e `risk_snapshots`.
 - Nao ha latitude/longitude por foco individual nesta entrega.
 - Escopo atual prioriza reproducao no repositorio (dados commitaveis).
 - Pontos detalhados ficam para evolucao com base interim/local em sprint seguinte.
