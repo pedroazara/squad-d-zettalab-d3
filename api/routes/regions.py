@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from db import get_db
@@ -9,5 +9,9 @@ router = APIRouter(prefix="/regions", tags=["regions"])
 
 
 @router.get("", response_model=list[RegionSnapshot])
-def get_regions(db: Session = Depends(get_db)) -> list[RegionSnapshot]:
-    return [RegionSnapshot(**row) for row in list_region_snapshots(db)]
+def get_regions(
+    db: Session = Depends(get_db),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+) -> list[RegionSnapshot]:
+    return [RegionSnapshot(**row) for row in list_region_snapshots(db, limit, offset)]

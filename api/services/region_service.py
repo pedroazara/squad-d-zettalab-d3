@@ -349,7 +349,9 @@ def list_regions(db: Session, ano_mes: str | None = None) -> list[RegionContext]
     return [_context_from_row(region, fire_event) for region, fire_event in db.execute(query).all()]
 
 
-def list_region_snapshots(db: Session) -> list[dict[str, float | int | str]]:
+def list_region_snapshots(
+    db: Session, limit: int = 100, offset: int = 0
+) -> list[dict[str, float | int | str]]:
     regions = list_regions(db)
     if not regions:
         return []
@@ -372,7 +374,7 @@ def list_region_snapshots(db: Session) -> list[dict[str, float | int | str]]:
             if climate_agg is not None:
                 avg_temp, avg_humidity, avg_precipitation = climate_agg
 
-    return [
+    snapshots = [
         build_region_snapshot_with_climate(
             region,
             *state_coordinates(region.estado),
@@ -382,6 +384,8 @@ def list_region_snapshots(db: Session) -> list[dict[str, float | int | str]]:
         )
         for region in regions
     ]
+    
+    return snapshots[offset : offset + limit]
 
 
 def get_region(db: Session, region_id: int, ano_mes: str | None = None) -> RegionContext | None:
