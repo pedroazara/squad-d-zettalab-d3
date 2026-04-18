@@ -142,6 +142,13 @@ class FireReportCreate(BaseModel):
     reporter_name: str | None = Field(default=None, max_length=120)
 
 
+FireReportStatusType = Literal["pendente", "em_revisao", "aprovado", "rejeitado"]
+
+
+class FireReportStatusUpdate(BaseModel):
+    status: FireReportStatusType
+
+
 class FireReportResponse(BaseModel):
     id: int
     location: str
