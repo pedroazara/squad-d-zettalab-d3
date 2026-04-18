@@ -37,6 +37,19 @@ def list_users(
     )
 
 
+@router.get("/{user_id}", response_model=UserAdminItem)
+def get_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("users.read")),
+) -> UserAdminItem:
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario nao encontrado")
+
+    return UserAdminItem.model_validate(user, from_attributes=True)
+
+
 @router.patch("/{user_id}", response_model=UserPublic)
 def update_user(
     user_id: int,

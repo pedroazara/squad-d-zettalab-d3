@@ -19,9 +19,13 @@ def create_fire_report(db: Session, payload: FireReportCreate) -> FireReport:
     return report
 
 
-def list_fire_reports(db: Session) -> list[FireReport]:
-    statement = select(FireReport).order_by(desc(FireReport.created_at))
+def list_fire_reports(db: Session, limit: int = 100, offset: int = 0) -> list[FireReport]:
+    statement = select(FireReport).order_by(desc(FireReport.created_at), desc(FireReport.id)).limit(limit).offset(offset)
     return list(db.scalars(statement).all())
+
+
+def get_fire_report(db: Session, report_id: int) -> FireReport | None:
+    return db.get(FireReport, report_id)
 
 
 def update_fire_report_status(db: Session, report_id: int, status: FireReportStatusType) -> FireReport | None:

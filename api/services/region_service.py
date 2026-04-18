@@ -350,12 +350,32 @@ def list_regions(db: Session, ano_mes: str | None = None) -> list[RegionContext]
 
 
 def list_region_snapshots(
-    db: Session, limit: int = 100, offset: int = 0
+    db: Session,
+    limit: int = 100,
+    offset: int = 0,
+    ano_mes: str | None = None,
 ) -> list[dict[str, float | int | str]]:
-    regions = list_regions(db)
+    regions = list_regions(db, ano_mes)
     if not regions:
         return []
 
+    avg_temp, avg_humidity, avg_precipitation = _latest_climate_averages(db)
+
+    snapshots = [
+        build_region_snapshot_with_climate(
+            region,
+            *state_coordinates(region.estado),
+            avg_temp,
+            avg_humidity,
+            avg_precipitation,
+        )
+        for region in regions
+    ]
+
+    return snapshots[offset : offset + limit]
+
+
+def _latest_climate_averages(db: Session) -> tuple[float | None, float | None, float | None]:
     latest_period = db.execute(select(func.max(ClimateMonthly.ano), func.max(ClimateMonthly.mes))).first()
     avg_temp = None
     avg_humidity = None
@@ -374,18 +394,31 @@ def list_region_snapshots(
             if climate_agg is not None:
                 avg_temp, avg_humidity, avg_precipitation = climate_agg
 
-    snapshots = [
-        build_region_snapshot_with_climate(
-            region,
-            *state_coordinates(region.estado),
-            avg_temp,
-            avg_humidity,
-            avg_precipitation,
-        )
-        for region in regions
-    ]
-    
-    return snapshots[offset : offset + limit]
+    return avg_temp, avg_humidity, avg_precipitation
+
+
+def get_region_snapshot(db: Session, region_id: int, ano_mes: str | None = None) -> dict[str, float | int | str] | None:
+    region = get_region(db, region_id, ano_mes)
+    if region is None:
+        return None
+
+    avg_temp, avg_humidity, avg_precipitation = _latest_climate_averages(db)
+
+    return build_region_snapshot_with_climate(
+        region,
+        *state_coordinates(region.estado),
+        avg_temp,
+        avg_humidity,
+        avg_precipitation,
+    )
+
+
+def get_risk_payload(db: Session, region_id: int, ano_mes: str | None = None) -> dict[str, object] | None:
+    payloads = list_risk_payloads(db, region_id, ano_mes, limit=1, offset=0)
+    if not payloads:
+        return None
+
+    return payloads[0]
 
 
 def get_region(db: Session, region_id: int, ano_mes: str | None = None) -> RegionContext | None:
@@ -426,6 +459,39 @@ def list_risk_payloads(
         payloads.append(build_risk_payload_from_snapshot(region, snapshot))
 
     return payloads
+
+
+def get_fire_item(db: Session, fire_event_id: int) -> dict[str, object] | None:
+    fire_event = db.get(FireEvent, fire_event_id)
+    if fire_event is None:
+        return None
+
+    region = db.get(Region, fire_event.region_id)
+    if region is None:
+        return None
+
+    score = _fire_score(fire_event)
+    return build_fire_item(region, fire_event, score, classify_risk(score))
+
+
+def get_fire_point_item(db: Session, point_id: int) -> dict[str, object] | None:
+    item = db.get(FirePoint, point_id)
+    if item is None:
+        return None
+
+    return build_fire_point_item(item)
+
+
+def get_climate_item(db: Session, climate_id: int) -> dict[str, object] | None:
+    item = db.get(ClimateMonthly, climate_id)
+    if item is None:
+        return None
+
+    temp_media = None
+    if item.temp_max_c is not None and item.temp_min_c is not None:
+        temp_media = round((item.temp_max_c + item.temp_min_c) / 2.0, 2)
+
+    return build_climate_item(item, temp_media)
 
 
 def list_fire_items(

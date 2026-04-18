@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from db import get_db
 from models.schemas import ClimateMonthlyResponse
-from services.region_service import list_climate_items
+from services.authz_service import get_current_user
+from services.region_service import get_climate_item, list_climate_items
 
-router = APIRouter(prefix="/climate", tags=["climate"])
+router = APIRouter(prefix="/climate", tags=["climate"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[ClimateMonthlyResponse])
@@ -21,3 +22,12 @@ def get_climate(
         ClimateMonthlyResponse(**row)
         for row in list_climate_items(db, ano=ano, mes=mes, estacao_codigo=estacao_codigo, limit=limit, offset=offset)
     ]
+
+
+@router.get("/{climate_id}", response_model=ClimateMonthlyResponse)
+def get_climate_by_id(climate_id: int, db: Session = Depends(get_db)) -> ClimateMonthlyResponse:
+    climate_item = get_climate_item(db, climate_id)
+    if climate_item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro climatico nao encontrado")
+
+    return ClimateMonthlyResponse(**climate_item)

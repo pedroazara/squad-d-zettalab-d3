@@ -56,6 +56,15 @@ class TestListUsers:
         data = response.json()
         assert len(data["items"]) <= 3
 
+    def test_get_user_by_id(self, client, admin_token, brigadista_user):
+        """Test getting a user by id."""
+        response = client.get(
+            f"/users/{brigadista_user.id}",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert response.status_code == 200
+        assert response.json()["id"] == brigadista_user.id
+
 
 class TestUpdateUser:
     """Tests for PATCH /users/{id} endpoint."""

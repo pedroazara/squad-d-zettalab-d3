@@ -3,9 +3,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from db import get_db
-from services.region_service import list_fire_items, list_fire_point_items
+from fastapi import HTTPException, status
 
-router = APIRouter(prefix="/fires", tags=["fires"])
+from services.authz_service import get_current_user
+from services.region_service import get_fire_item, get_fire_point_item, list_fire_items, list_fire_point_items
+
+router = APIRouter(prefix="/fires", tags=["fires"], dependencies=[Depends(get_current_user)])
 
 class FireMapItem(BaseModel):
     id: int
@@ -69,3 +72,21 @@ def get_fire_points(
     offset: int = Query(default=0, ge=0),
 ) -> list[FirePointItem]:
     return [FirePointItem(**row) for row in list_fire_point_items(db, ano_mes, estado, municipio, limit, offset)]
+
+
+@router.get("/points/{point_id}", response_model=FirePointItem)
+def get_fire_point(point_id: int, db: Session = Depends(get_db)) -> FirePointItem:
+    fire_point = get_fire_point_item(db, point_id)
+    if fire_point is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Foco georreferenciado nao encontrado")
+
+    return FirePointItem(**fire_point)
+
+
+@router.get("/{fire_id}", response_model=FireMapItem)
+def get_fire(fire_id: int, db: Session = Depends(get_db)) -> FireMapItem:
+    fire_item = get_fire_item(db, fire_id)
+    if fire_item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Foco nao encontrado")
+
+    return FireMapItem(**fire_item)
