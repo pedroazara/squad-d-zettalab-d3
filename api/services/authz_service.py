@@ -1,7 +1,7 @@
 from collections.abc import Callable
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from db import get_db
@@ -9,7 +9,7 @@ from models.entities import User
 from services.auth_service import get_user_by_id
 from services.security_service import decode_access_token, is_invalid_token_error
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+bearer_scheme = HTTPBearer(auto_error=False, scheme_name="BearerAuth")
 
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "administrador": {
@@ -48,9 +48,14 @@ def _raise_unauthorized(detail: str = "Nao autenticado") -> None:
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+    if credentials is None:
+        _raise_unauthorized()
+
+    token = credentials.credentials
+
     try:
         payload = decode_access_token(token)
     except Exception as exc:
