@@ -1214,3 +1214,46 @@ def list_fire_point_items(
         )
 
     return records
+
+
+def list_climate_items(
+    db: Session,
+    ano: int | None = None,
+    mes: int | None = None,
+    estacao_codigo: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    query = select(ClimateMonthly)
+
+    if ano is not None:
+        query = query.where(ClimateMonthly.ano == ano)
+
+    if mes is not None:
+        query = query.where(ClimateMonthly.mes == mes)
+
+    if estacao_codigo is not None:
+        query = query.where(func.upper(ClimateMonthly.estacao_codigo) == estacao_codigo.strip().upper())
+
+    query = query.order_by(ClimateMonthly.ano.desc(), ClimateMonthly.mes.desc(), ClimateMonthly.estacao_codigo).offset(offset).limit(limit)
+
+    records: list[dict[str, object]] = []
+    for item in db.execute(query).scalars().all():
+        temp_media = None
+        if item.temp_max_c is not None and item.temp_min_c is not None:
+            temp_media = round((item.temp_max_c + item.temp_min_c) / 2.0, 2)
+
+        records.append(
+            {
+                "estacao_codigo": item.estacao_codigo,
+                "ano": item.ano,
+                "mes": item.mes,
+                "temp_max_c": item.temp_max_c,
+                "temp_min_c": item.temp_min_c,
+                "temp_media_c": temp_media,
+                "umidade_min_pct": item.umidade_min_pct,
+                "precipitacao_mm": item.precipitacao_mm,
+            }
+        )
+
+    return records

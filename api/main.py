@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from db import Base, engine
 from routes.auth import router as auth_router
+from routes.climate import router as climate_router
 from routes.fires import router as fires_router
 from routes.regions import router as regions_router
 from routes.reports import router as reports_router
@@ -43,6 +44,7 @@ app.include_router(auth_router)
 app.include_router(regions_router)
 app.include_router(risk_router)
 app.include_router(fires_router)
+app.include_router(climate_router)
 app.include_router(reports_router)
 
 

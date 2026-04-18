@@ -83,6 +83,17 @@ class RiskForecastResponse(RiskResponse):
     tendencia: Literal["crescente", "estavel", "decrescente"]
 
 
+class ClimateMonthlyResponse(BaseModel):
+    estacao_codigo: str
+    ano: int
+    mes: int
+    temp_max_c: float | None
+    temp_min_c: float | None
+    temp_media_c: float | None
+    umidade_min_pct: float | None
+    precipitacao_mm: float | None
+
+
 class FireReportCreate(BaseModel):
     location: str = Field(min_length=5, max_length=255)
     description: str = Field(min_length=10, max_length=2000)
