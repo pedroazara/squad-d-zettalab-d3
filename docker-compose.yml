@@ -31,6 +31,8 @@ services:
       JWT_EXPIRE_MINUTES: "120"
     ports:
       - "8000:8000"
+    volumes:
+      - ./data:/data:ro
     restart: unless-stopped
 
 volumes:
