@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
@@ -36,71 +34,16 @@ from services.risk_hybrid_service import (
     load_hybrid_support_index,
     score_for_state_risk,
 )
-from services.risk_service import (
-    AggregateRiskInput,
-    calculate_aggregate_risk_score,
-    classify_risk,
-    forecast_tendency,
+from services.region_presenter import (
+    RegionContext,
+    build_climate_item,
+    build_fire_item,
+    build_fire_point_item,
+    build_region_snapshot_with_climate,
+    build_risk_payload_from_snapshot,
 )
+from services.risk_service import AggregateRiskInput, calculate_aggregate_risk_score, classify_risk, forecast_tendency
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-
-@dataclass(frozen=True)
-class RegionContext:
-    region_id: int
-    estado: str
-    municipio: str
-    ano: int
-    mes: int
-    ano_mes: str
-    quantidade_focos: int
-    risco_fogo_mediano: float
-    frp_mediano: float
-    bioma: str | None
-
-    @property
-    def nome(self) -> str:
-        return f"{self.municipio} - {self.estado} ({self.ano_mes})"
-
-
-def _build_region_snapshot(region: RegionContext) -> dict[str, float | int | str]:
-    base_lat, base_lng = state_coordinates(region.estado)
-    offset = (region.region_id % 9) * 0.03
-    temperatura = round(24 + (region.risco_fogo_mediano * 12) + (region.frp_mediano / 180), 1)
-    umidade = round(max(12.0, 75 - (region.risco_fogo_mediano * 50)), 1)
-    vento = round(6 + min(24.0, region.frp_mediano / 12), 1)
-    precipitacao = round(max(0.0, 120 - (region.risco_fogo_mediano * 110)), 1)
-
-    return {
-        "id": region.region_id,
-        "nome": region.nome,
-        "latitude": round(base_lat + offset, 4),
-        "longitude": round(base_lng - offset, 4),
-        "temperatura": temperatura,
-        "umidade": umidade,
-        "vento": vento,
-        "precipitacao": precipitacao,
-        "focos_calor": region.quantidade_focos,
-    }
-
-
-def _build_region_snapshot_with_climate(
-    region: RegionContext,
-    avg_temp: float | None,
-    avg_humidity: float | None,
-    avg_precipitation: float | None,
-) -> dict[str, float | int | str]:
-    snapshot = _build_region_snapshot(region)
-    offset = ((region.region_id % 5) - 2) * 0.4
-
-    if avg_temp is not None:
-        snapshot["temperatura"] = round(avg_temp + offset, 1)
-    if avg_humidity is not None:
-        snapshot["umidade"] = round(max(5.0, min(100.0, avg_humidity - (offset * 2))), 1)
-    if avg_precipitation is not None:
-        snapshot["precipitacao"] = round(max(0.0, avg_precipitation - (offset * 3)), 1)
-
-    return snapshot
 
 
 
@@ -405,7 +348,13 @@ def list_region_snapshots(db: Session) -> list[dict[str, float | int | str]]:
                 avg_temp, avg_humidity, avg_precipitation = climate_agg
 
     return [
-        _build_region_snapshot_with_climate(region, avg_temp, avg_humidity, avg_precipitation)
+        build_region_snapshot_with_climate(
+            region,
+            *state_coordinates(region.estado),
+            avg_temp,
+            avg_humidity,
+            avg_precipitation,
+        )
         for region in regions
     ]
 
@@ -424,34 +373,6 @@ def get_region(db: Session, region_id: int, ano_mes: str | None = None) -> Regio
 
     region, fire_event = row
     return _context_from_row(region, fire_event)
-
-
-def build_risk_payload(region: RegionContext) -> dict[str, object]:
-    current_score = calculate_aggregate_risk_score(
-        AggregateRiskInput(
-            quantidade_focos=region.quantidade_focos,
-            risco_fogo_mediano=region.risco_fogo_mediano,
-            frp_mediano=region.frp_mediano,
-        )
-    )
-
-    tomorrow_score = calculate_aggregate_risk_score(
-        AggregateRiskInput(
-            quantidade_focos=max(1, round(region.quantidade_focos * 1.15)),
-            risco_fogo_mediano=min(1.0, region.risco_fogo_mediano + 0.05),
-            frp_mediano=region.frp_mediano * 1.1,
-        )
-    )
-
-    return {
-        "regiao_id": region.region_id,
-        "regiao_nome": region.nome,
-        "score": current_score,
-        "risco": classify_risk(current_score),
-        "score_amanha": tomorrow_score,
-        "risco_amanha": classify_risk(tomorrow_score),
-        "tendencia": forecast_tendency(current_score, tomorrow_score),
-    }
 
 
 def list_risk_payloads(
@@ -473,17 +394,7 @@ def list_risk_payloads(
 
     payloads: list[dict[str, object]] = []
     for region, snapshot in db.execute(query).all():
-        payloads.append(
-            {
-                "regiao_id": region.id,
-                "regiao_nome": f"{region.municipio} - {region.estado} ({snapshot.ano_mes})",
-                "score": snapshot.score,
-                "risco": snapshot.risco,
-                "score_amanha": snapshot.score_amanha,
-                "risco_amanha": snapshot.risco_amanha,
-                "tendencia": snapshot.tendencia,
-            }
-        )
+        payloads.append(build_risk_payload_from_snapshot(region, snapshot))
 
     return payloads
 
@@ -518,19 +429,7 @@ def list_fire_items(
                 frp_mediano=fire_event.frp_mediano,
             )
         )
-        records.append(
-            {
-                "id": fire_event.id,
-                "estado": region.estado,
-                "municipio": region.municipio,
-                "ano_mes": fire_event.ano_mes,
-                "quantidade_focos": fire_event.quantidade_focos,
-                "risco_fogo_mediano": fire_event.risco_fogo_mediano,
-                "frp_mediano": fire_event.frp_mediano,
-                "score": score,
-                "risco": classify_risk(score),
-            }
-        )
+        records.append(build_fire_item(region, fire_event, score, classify_risk(score)))
 
     return records
 
@@ -558,21 +457,7 @@ def list_fire_point_items(
 
     records: list[dict[str, object]] = []
     for item in db.execute(query).scalars().all():
-        records.append(
-            {
-                "id": item.id,
-                "data_hora": item.data_hora,
-                "satelite": item.satelite,
-                "estado": item.estado,
-                "municipio": item.municipio,
-                "bioma": item.bioma,
-                "risco_fogo": item.risco_fogo,
-                "frp": item.frp,
-                "latitude": item.latitude,
-                "longitude": item.longitude,
-                "ano_mes": item.ano_mes,
-            }
-        )
+        records.append(build_fire_point_item(item))
 
     return records
 
@@ -604,17 +489,6 @@ def list_climate_items(
         if item.temp_max_c is not None and item.temp_min_c is not None:
             temp_media = round((item.temp_max_c + item.temp_min_c) / 2.0, 2)
 
-        records.append(
-            {
-                "estacao_codigo": item.estacao_codigo,
-                "ano": item.ano,
-                "mes": item.mes,
-                "temp_max_c": item.temp_max_c,
-                "temp_min_c": item.temp_min_c,
-                "temp_media_c": temp_media,
-                "umidade_min_pct": item.umidade_min_pct,
-                "precipitacao_mm": item.precipitacao_mm,
-            }
-        )
+        records.append(build_climate_item(item, temp_media))
 
     return records
