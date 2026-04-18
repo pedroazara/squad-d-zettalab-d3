@@ -21,6 +21,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     },
 )
 def register(payload: UserCreate, db: Session = Depends(get_db)) -> AuthResponse:
+    if payload.role == "administrador":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Cadastro como administrador nao e permitido",
+        )
+
     existing_user = get_user_by_email(db, payload.email)
     if existing_user:
         raise HTTPException(

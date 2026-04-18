@@ -105,6 +105,20 @@ class TestAuthRegister:
         )
         assert response.status_code == 422
 
+    def test_register_admin_role_forbidden(self, client):
+        """Test that public registration cannot create administrator users."""
+        response = client.post(
+            "/auth/register",
+            json={
+                "name": "Admin User",
+                "email": "admin.new@example.com",
+                "organization": "Test Org",
+                "role": "administrador",
+                "password": "pass123",
+            },
+        )
+        assert response.status_code == 422
+
 
 class TestAuthMe:
     """Tests for GET /auth/me endpoint."""
