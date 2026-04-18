@@ -68,7 +68,7 @@ def upsert_region(db: Session, record: FocoRecord) -> Region:
         raise RuntimeError(f"Nao foi possivel localizar a regiao {record.estado} / {record.municipio}")
 
     if existing.bioma_predominante is None and record.bioma:
-        existing.bioma_predominante = record.biomaclear
+        existing.bioma_predominante = record.bioma
     if existing.latitude is None or existing.longitude is None:
         existing.latitude = latitude
         existing.longitude = longitude
