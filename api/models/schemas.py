@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 RoleType = Literal["brigadista", "fazendeiro", "coordenacao", "administrador"]
 RiskLevel = Literal["baixo", "medio", "alto"]
@@ -50,6 +50,47 @@ class UserPublic(BaseModel):
     email: EmailStr
     organization: str
     role: RoleType
+
+
+class UserAdminItem(BaseModel):
+    id: int
+    name: str
+    email: EmailStr
+    organization: str
+    role: RoleType
+    active: bool
+    created_at: datetime
+
+
+class UsersListResponse(BaseModel):
+    items: list[UserAdminItem]
+    total: int
+    limit: int
+    offset: int
+
+
+class UserAdminUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=3, max_length=120)
+    organization: str | None = Field(default=None, min_length=3, max_length=255)
+    role: RoleType | None = None
+    active: bool | None = None
+
+    @field_validator("name", "organization")
+    @classmethod
+    def validate_non_blank_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Campo obrigatorio")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_at_least_one_field(self) -> "UserAdminUpdate":
+        if self.name is None and self.organization is None and self.role is None and self.active is None:
+            raise ValueError("Pelo menos um campo deve ser informado")
+        return self
 
 
 class AuthResponse(BaseModel):

@@ -3,18 +3,20 @@
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from db import Base, engine
+from db import Base, engine, ensure_users_active_column
 from routes.auth import router as auth_router
 from routes.climate import router as climate_router
 from routes.fires import router as fires_router
 from routes.regions import router as regions_router
 from routes.reports import router as reports_router
 from routes.risk import router as risk_router
+from routes.users import router as users_router
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    ensure_users_active_column()
     # Nota: Ingestão de dados movida para scripts/seed.py
     # Executar manualmente: python scripts/seed.py
     yield
@@ -46,6 +48,7 @@ app.include_router(risk_router)
 app.include_router(fires_router)
 app.include_router(climate_router)
 app.include_router(reports_router)
+app.include_router(users_router)
 
 
 @app.get("/health", tags=["health"])

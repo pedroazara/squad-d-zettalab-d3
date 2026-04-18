@@ -71,6 +71,9 @@ def get_current_user(
     if not user:
         _raise_unauthorized("Usuario nao encontrado")
 
+    if not user.active:
+        _raise_unauthorized("Usuario desativado")
+
     return user
 
 
