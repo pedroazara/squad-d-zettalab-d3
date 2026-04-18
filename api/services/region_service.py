@@ -46,6 +46,31 @@ from services.risk_service import AggregateRiskInput, calculate_aggregate_risk_s
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
+def _apply_optional_text_filter(query, column, value: str | None):
+    if value is None:
+        return query
+
+    return query.where(func.upper(column) == value.strip().upper())
+
+
+def _apply_optional_text_filters(query, filters: list[tuple[object, str | None]]):
+    for column, value in filters:
+        query = _apply_optional_text_filter(query, column, value)
+    return query
+
+
+def _paginate_and_order(query, order_by_columns, limit: int, offset: int):
+    return query.order_by(*order_by_columns).offset(offset).limit(limit)
+
+
+def _fire_score(fire_event: FireEvent) -> float:
+    return calculate_aggregate_risk_score(
+        AggregateRiskInput(
+            quantidade_focos=fire_event.quantidade_focos,
+            risco_fogo_mediano=fire_event.risco_fogo_mediano,
+            frp_mediano=fire_event.frp_mediano,
+        )
+    )
 
 
 def sync_foco_dataset(db: Session) -> None:
@@ -390,7 +415,7 @@ def list_risk_payloads(
     if ano_mes is not None:
         query = query.where(RiskSnapshot.ano_mes == ano_mes)
 
-    query = query.order_by(RiskSnapshot.ano_mes.desc(), Region.estado, Region.municipio).offset(offset).limit(limit)
+    query = _paginate_and_order(query, [RiskSnapshot.ano_mes.desc(), Region.estado, Region.municipio], limit, offset)
 
     payloads: list[dict[str, object]] = []
     for region, snapshot in db.execute(query).all():
@@ -409,26 +434,19 @@ def list_fire_items(
 ) -> list[dict[str, object]]:
     query = select(Region, FireEvent).join(FireEvent, FireEvent.region_id == Region.id)
 
-    if ano_mes is not None:
-        query = query.where(FireEvent.ano_mes == ano_mes)
-
-    if estado is not None:
-        query = query.where(func.upper(Region.estado) == estado.strip().upper())
-
-    if municipio is not None:
-        query = query.where(func.upper(Region.municipio) == municipio.strip().upper())
-
-    query = query.order_by(FireEvent.ano_mes.desc(), Region.estado, Region.municipio).offset(offset).limit(limit)
+    query = _apply_optional_text_filters(
+        query,
+        [
+            (FireEvent.ano_mes, ano_mes),
+            (Region.estado, estado),
+            (Region.municipio, municipio),
+        ],
+    )
+    query = _paginate_and_order(query, [FireEvent.ano_mes.desc(), Region.estado, Region.municipio], limit, offset)
 
     records: list[dict[str, object]] = []
     for region, fire_event in db.execute(query).all():
-        score = calculate_aggregate_risk_score(
-            AggregateRiskInput(
-                quantidade_focos=fire_event.quantidade_focos,
-                risco_fogo_mediano=fire_event.risco_fogo_mediano,
-                frp_mediano=fire_event.frp_mediano,
-            )
-        )
+        score = _fire_score(fire_event)
         records.append(build_fire_item(region, fire_event, score, classify_risk(score)))
 
     return records
@@ -444,16 +462,15 @@ def list_fire_point_items(
 ) -> list[dict[str, object]]:
     query = select(FirePoint)
 
-    if ano_mes is not None:
-        query = query.where(FirePoint.ano_mes == ano_mes)
-
-    if estado is not None:
-        query = query.where(func.upper(FirePoint.estado) == estado.strip().upper())
-
-    if municipio is not None:
-        query = query.where(func.upper(FirePoint.municipio) == municipio.strip().upper())
-
-    query = query.order_by(FirePoint.ano_mes.desc(), FirePoint.estado, FirePoint.municipio, FirePoint.id).offset(offset).limit(limit)
+    query = _apply_optional_text_filters(
+        query,
+        [
+            (FirePoint.ano_mes, ano_mes),
+            (FirePoint.estado, estado),
+            (FirePoint.municipio, municipio),
+        ],
+    )
+    query = _paginate_and_order(query, [FirePoint.ano_mes.desc(), FirePoint.estado, FirePoint.municipio, FirePoint.id], limit, offset)
 
     records: list[dict[str, object]] = []
     for item in db.execute(query).scalars().all():
@@ -478,10 +495,8 @@ def list_climate_items(
     if mes is not None:
         query = query.where(ClimateMonthly.mes == mes)
 
-    if estacao_codigo is not None:
-        query = query.where(func.upper(ClimateMonthly.estacao_codigo) == estacao_codigo.strip().upper())
-
-    query = query.order_by(ClimateMonthly.ano.desc(), ClimateMonthly.mes.desc(), ClimateMonthly.estacao_codigo).offset(offset).limit(limit)
+    query = _apply_optional_text_filter(query, ClimateMonthly.estacao_codigo, estacao_codigo)
+    query = _paginate_and_order(query, [ClimateMonthly.ano.desc(), ClimateMonthly.mes.desc(), ClimateMonthly.estacao_codigo], limit, offset)
 
     records: list[dict[str, object]] = []
     for item in db.execute(query).scalars().all():
