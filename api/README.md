@@ -1,16 +1,22 @@
-# API - Guia rapido de execucao, rotas e testes
+# GuaraWatch API
 
-Este documento descreve como subir, testar e validar a API FastAPI do projeto.
+Documentação oficial de execução, configuração, segurança, rotas e validação da API.
 
-## 1. Requisitos
+## 1. Ambientes
+
+- Produção (Render): https://guarawatch-api.onrender.com
+- Swagger de produção: https://guarawatch-api.onrender.com/docs
+- Healthcheck de produção: https://guarawatch-api.onrender.com/health
+
+## 2. Requisitos
 
 - Python 3.10+
-- Ambiente virtual criado e ativado
-- Docker e Docker Compose para PostgreSQL local
+- Ambiente virtual ativo
+- Docker e Docker Compose (opcional para banco e stack local)
 
-## 2. Instalacao
+## 3. Instalação local
 
-Na raiz do projeto:
+Na raiz do repositório:
 
 ```bash
 python -m venv .venv
@@ -18,112 +24,211 @@ python -m venv .venv
 pip install -r api/requirements.txt
 ```
 
-## 3. Banco de dados
+### 3.1 Estrutura da API
 
-A API usa a variavel de ambiente `DATABASE_URL` para escolher o banco.
+```text
+api/
+├─ main.py
+├─ db.py
+├─ Dockerfile
+├─ requirements.txt
+├─ .env.example
+├─ models/
+│  ├─ entities.py
+│  └─ schemas.py
+├─ routes/
+│  ├─ auth.py
+│  ├─ users.py
+│  ├─ regions.py
+│  ├─ risk.py
+│  ├─ fires.py
+│  ├─ climate.py
+│  └─ reports.py
+├─ services/
+│  ├─ auth_service.py
+│  ├─ authz_service.py
+│  ├─ security_service.py
+│  ├─ seed_service.py
+│  ├─ region_service.py
+│  ├─ region_presenter.py
+│  ├─ report_service.py
+│  ├─ risk_service.py
+│  ├─ risk_hybrid_service.py
+│  ├─ ingestion/
+│  │  ├─ file_loaders.py
+│  │  └─ normalizers.py
+│  └─ repositories/
+│     └─ region_repository.py
+├─ scripts/
+│  ├─ seed.py
+│  └─ predeploy_check.py
+└─ tests/
+  ├─ conftest.py
+  ├─ test_auth.py
+  ├─ test_users.py
+  ├─ test_reports.py
+  ├─ test_data_routes.py
+  ├─ test_db.py
+  ├─ test_region_service.py
+  ├─ test_region_repository.py
+  ├─ test_region_presenter.py
+  ├─ test_risk_service.py
+  ├─ test_risk_hybrid_service.py
+  ├─ test_seed_service.py
+  └─ test_ingestion_and_normalizers.py
+```
+
+Obs.: arquivos temporários (`__pycache__`) e banco local (`app.db`) não entram nessa visão estrutural.
+
+## 4. Configuração de ambiente
+
+Variáveis utilizadas pela API:
+
+- `DATABASE_URL`: conexão com banco.
+- `JWT_SECRET`: chave de assinatura JWT.
+- `JWT_ALGORITHM`: algoritmo JWT (recomendado: `HS256`).
+- `JWT_EXPIRE_MINUTES`: expiração do token em minutos.
+- `CORS_ALLOW_ORIGINS`: lista separada por vírgula de origens permitidas.
+
+Observações:
 
 - Sem `DATABASE_URL`, a API usa SQLite local em `api/app.db`.
 - Com `DATABASE_URL`, a API usa PostgreSQL.
-- A ingestao de dados e manual via script de seed para manter o startup rapido.
+- Quando `DATABASE_URL` vier como `postgresql://...`, a aplicação converte automaticamente para o dialeto `postgresql+psycopg://...`.
 
-### Execucao via Docker Compose
+### 4.1 Banco de produção (Neon)
 
-Esta e a forma recomendada para reproduzir o ambiente completo da API e do banco localmente.
+Em produção, a API usa PostgreSQL gerenciado no Neon via `DATABASE_URL`.
 
-```bash
-docker compose up -d --build
-docker compose ps
+Boas práticas:
+
+- usar URL completa com `sslmode=require`
+- manter credenciais no Render Environment (nunca versionar)
+- rotacionar senha do banco ao expor credencial por engano
+- validar schema da tabela `users` antes de homologar login
+
+Checks úteis no Neon SQL Editor:
+
+```sql
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'users'
+ORDER BY ordinal_position;
 ```
 
-Com isso, a API fica disponivel em `http://127.0.0.1:8000` e o PostgreSQL em `localhost:5432`.
+Os campos essenciais para auth são: `id`, `email`, `role`, `active`, `password_hash`.
 
-Para parar tudo:
+## 5. Execução local
 
-```bash
-docker compose down
-```
-
-### PostgreSQL local com Docker Compose
-
-Na raiz do projeto:
-
-```bash
-docker compose up -d postgres
-docker compose ps
-```
-
-No PowerShell, configure a conexao da API:
-
-```powershell
-$env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/guarawatch"
-```
-
-Para parar o banco local depois:
-
-```bash
-docker compose down
-```
-
-## 4. Como executar a API
-
-Importante: se optar pela execucao local com Python, execute o servidor a partir da pasta `api` para evitar erro de importacao de modulos locais.
+### 5.1 Somente API (Python)
 
 ```bash
 cd api
 uvicorn main:app --reload
 ```
 
-API: http://127.0.0.1:8000
-Swagger: http://127.0.0.1:8000/docs
+- API local: http://127.0.0.1:8000
+- Swagger local: http://127.0.0.1:8000/docs
 
-## 5. Rotas disponiveis
+### 5.2 Stack local com Docker Compose
 
-### Saude
+Na raiz do repositório:
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+Para parar:
+
+```bash
+docker compose down
+```
+
+## 6. Autenticação e autorização
+
+### 6.1 Fluxo de autenticação
+
+1. Chamar `POST /auth/login` com `email` e `password`.
+2. Copiar o `token` retornado.
+3. No Swagger, clicar em `Authorize` e colar o token no schema `BearerAuth`.
+
+### 6.2 Perfis válidos
+
+- `administrador`
+- `coordenacao`
+- `brigadista`
+- `fazendeiro`
+
+`POST /auth/register` não permite criar `administrador` via cadastro público.
+
+### 6.3 Permissões por perfil
+
+- `administrador`: `users.read`, `users.create`, `users.update`, `users.delete`, `reports.read`, `reports.review`, `risk.read`, `risk.manage`
+- `coordenacao`: `users.read`, `reports.read`, `reports.review`, `risk.read`
+- `brigadista`: `reports.read`, `risk.read`
+- `fazendeiro`: `reports.read`, `risk.read`
+
+## 7. Endpoints
+
+### 7.1 Health
 
 - `GET /health`
 - `GET /`
 
-### Autenticacao e usuarios
+### 7.2 Auth
 
 - `POST /auth/register`
 - `POST /auth/login`
 - `GET /auth/me`
 - `GET /auth/me/permissions`
 - `GET /auth/permissions/reports-review`
-- `GET /users`  
-  Requer permissao `users.read`.
-- `PATCH /users/{id}`  
-  Requer permissao `users.update`.
 
-### Regioes, risco e focos
+### 7.3 Usuários (admin/coordenacao conforme permissão)
 
-- `GET /regions`
-- `GET /risk`  
-  Filtros: `region_id`, `ano_mes`, `limit`, `offset`
-- `GET /fires`  
-  Filtros: `ano_mes`, `estado`, `municipio`, `limit`, `offset`
-- `GET /fires/points`  
-  Filtros: `ano_mes`, `estado`, `municipio`, `limit`, `offset`
+- `GET /users?limit=20&offset=0`
+- `GET /users/{user_id}`
+- `PATCH /users/{user_id}`
 
-### Clima
+Regras de segurança no update:
 
-- `GET /climate`  
-  Filtros: `ano`, `mes`, `estacao_codigo`, `limit`, `offset`
+- não permite autoelevação de `role`
+- não permite autodesativação (`active=false`)
 
-### Reportes
+### 7.4 Regiões
+
+- `GET /regions?limit=100&offset=0&ano_mes=YYYY-MM`
+- `GET /regions/{region_id}?ano_mes=YYYY-MM`
+
+### 7.5 Risco
+
+- `GET /risk?region_id=&ano_mes=YYYY-MM&limit=100&offset=0`
+- `GET /risk/{region_id}?ano_mes=YYYY-MM`
+
+### 7.6 Focos
+
+- `GET /fires?ano_mes=YYYY-MM&estado=&municipio=&limit=100&offset=0`
+- `GET /fires/{fire_id}`
+- `GET /fires/points?ano_mes=YYYY-MM&estado=&municipio=&limit=1000&offset=0`
+- `GET /fires/points/{point_id}`
+
+### 7.7 Clima
+
+- `GET /climate?ano=&mes=&estacao_codigo=&limit=100&offset=0`
+- `GET /climate/{climate_id}`
+
+### 7.8 Reportes
 
 - `POST /reports/fire`
-- `GET /reports/fire`
-- `PATCH /reports/fire/{report_id}/status`  
-  Requer permissao `reports.review`.
+- `GET /reports/fire?limit=100&offset=0`
+- `GET /reports/fire/{report_id}`
+- `PATCH /reports/fire/{report_id}/status` (requer `reports.review`)
 
-## 6. Contratos principais
+## 8. Contratos essenciais
 
-### 6.1 Cadastro
+### 8.1 Register
 
 `POST /auth/register`
-
-Payload:
 
 ```json
 {
@@ -135,17 +240,9 @@ Payload:
 }
 ```
 
-Resposta:
-
-- `message`
-- `token`
-- `user` com `id`, `name`, `email`, `organization`, `role`
-
-### 6.2 Login
+### 8.2 Login
 
 `POST /auth/login`
-
-Payload:
 
 ```json
 {
@@ -154,185 +251,173 @@ Payload:
 }
 ```
 
-Resposta:
+Retorno padrão de auth:
 
 - `message`
 - `token`
-- `user` com `id`, `name`, `email`, `organization`, `role`
+- `user` (`id`, `name`, `email`, `organization`, `role`)
 
-### 6.3 Listagem administrativa de usuarios
+## 9. Seed e predeploy
 
-`GET /users`
-
-Exemplo:
+### 9.1 Seed de dados
 
 ```bash
-/users?limit=20&offset=0
-```
-
-Resposta:
-
-- `items`
-- `total`
-- `limit`
-- `offset`
-
-### 6.4 Atualizacao administrativa de usuario
-
-`PATCH /users/{id}`
-
-Campos aceitos:
-
-- `name`
-- `organization`
-- `role`
-- `active`
-
-Regras:
-
-- nao e permitido desativar o proprio usuario
-- nao e permitido autoelevacao de privilegio alterando o proprio `role`
-
-### 6.5 Reporte de incendio
-
-`POST /reports/fire`
-
-Payload:
-
-```json
-{
-  "location": "Area de teste",
-  "description": "Registro para moderacao de status",
-  "phone": "61999990000",
-  "reporter_name": "Bot"
-}
-```
-
-Resposta:
-
-- `id`
-- `location`
-- `description`
-- `phone`
-- `reporter_name`
-- `status`
-- `created_at`
-
-### 6.6 Moderacao de reporte
-
-`PATCH /reports/fire/{report_id}/status`
-
-Payload:
-
-```json
-{
-  "status": "em_revisao"
-}
-```
-
-Status aceitos:
-
-- `pendente`
-- `em_revisao`
-- `aprovado`
-- `rejeitado`
-
-## 7. Teste manual rapido
-
-Com a API rodando em outra janela, use exemplos abaixo no PowerShell.
-
-### 7.1 Health
-
-```powershell
-Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:8000/health" | Select-Object -ExpandProperty StatusCode
-```
-
-Esperado: `200`
-
-### 7.2 Cadastro
-
-```powershell
-$payload = @{
-  name = "Usuario Teste"
-  email = "usuario_teste@example.com"
-  organization = "Equipe X"
-  role = "fazendeiro"
-  password = "123456"
-} | ConvertTo-Json
-
-Invoke-WebRequest -Method POST -UseBasicParsing "http://127.0.0.1:8000/auth/register" -ContentType "application/json" -Body $payload
-```
-
-Esperado: `201` na primeira chamada e `409` se repetir o mesmo e-mail.
-
-### 7.3 Login
-
-```powershell
-$payload = @{
-  email = "usuario_teste@example.com"
-  password = "123456"
-} | ConvertTo-Json
-
-Invoke-WebRequest -Method POST -UseBasicParsing "http://127.0.0.1:8000/auth/login" -ContentType "application/json" -Body $payload
-```
-
-Esperado: `200` com token no corpo.
-
-### 7.4 Risco
-
-```powershell
-Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:8000/risk?limit=5&offset=0" | Select-Object -ExpandProperty StatusCode
-Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:8000/risk?ano_mes=2024-08&limit=5&offset=0" | Select-Object -ExpandProperty StatusCode
-```
-
-Esperado: `200`
-
-### 7.5 Mapa agregado
-
-```powershell
-Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:8000/fires?limit=5&offset=0" | Select-Object -ExpandProperty StatusCode
-Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:8000/fires?ano_mes=2024-08&limit=5&offset=0" | Select-Object -ExpandProperty StatusCode
-try { Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:8000/fires?ano_mes=2024/08" } catch { $_.Exception.Response.StatusCode.value__ }
-```
-
-Esperado: `200`, `200`, `422`
-
-### 7.6 Predeploy
-
-Antes de deploy, execute:
-
-```powershell
 cd api
-$env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/guarawatch"
+python scripts/seed.py
+```
+
+### 9.2 Predeploy check
+
+```bash
+cd api
 python scripts/predeploy_check.py --skip-seed
 ```
 
-Opcional para validar idempotencia do seed:
+Opcional (valida idempotência do seed):
 
-```powershell
+```bash
 python scripts/predeploy_check.py --seed-runs 2
 ```
 
-O script valida:
-- conectividade e tabelas obrigatorias no banco
-- execucao do seed (opcional)
-- contagens minimas de dados essenciais
-- smoke test dos endpoints: `/health`, `/regions`, `/risk`, `/fires`, `/fires/points`, `/auth/*`, `/reports/fire`
+### 9.3 Estratégia de testes automatizados
 
-## 8. Observacoes de funcionamento
+A API possui cobertura de testes para autenticação, autorização, serviços de risco, repositórios, ingestão e rotas.
 
-- `GET /fires` consulta o banco e depende da carga via seed.
-- `GET /regions` e `GET /risk` leem das tabelas `regions`, `fire_events` e `risk_snapshots`.
-- `GET /fires/points` expõe os focos georreferenciados.
-- `GET /climate` expõe indicadores climaticos mensais.
-- `POST /auth/register` e `POST /auth/login` retornam JWT.
-- Rotas administrativas exigem token Bearer e permissao adequada.
-- `users.active` controla desativacao logica; usuarios inativos nao autenticam e nao usam `/auth/me`.
-- Em Docker Compose, o backend usa o servico `postgres` da rede interna como banco principal.
+Suites disponíveis em `api/tests`:
 
-## 9. Escopo atual
+- `test_auth.py`: cadastro, login, usuário inativo, bloqueio de admin público e `/auth/me`
+- `test_users.py`: listagem/detalhe/atualização administrativa
+- `test_reports.py`: criação, listagem, detalhe e moderação
+- `test_data_routes.py`: rotas de regiões, risco, focos e clima
+- `test_risk_service.py` e `test_risk_hybrid_service.py`: regras de score e classificação
+- `test_seed_service.py`: idempotência e carga inicial
 
-- A API esta focada em autenticacao, usuarios, risco, focos, clima e reportes.
-- CRUD completo de usuarios foi substituido por listagem, atualizacao administrativa e desativacao logica.
-- Reportes usam criacao publica, listagem e moderacao por status.
-- Alertas e area de interesse continuam fora do MVP atual.
+Comandos recomendados:
+
+```bash
+cd api
+pytest -q
+pytest --cov=. --cov-report=term-missing
+```
+
+Para validação rápida de auth (útil em deploy):
+
+```bash
+cd ..
+python -m pytest api/tests/test_auth.py -q
+```
+
+### 9.4 Garantias do predeploy_check
+
+O script `scripts/predeploy_check.py` executa:
+
+- validação de conectividade com banco e tabelas obrigatórias
+- seed opcional com repetição para testar idempotência
+- validação de contagem mínima de dados críticos
+- smoke test HTTP de endpoints essenciais
+
+## 10. Deploy (Render)
+
+Configuração recomendada do serviço:
+
+- Runtime: Docker
+- Root Directory: `api`
+- Dockerfile: `Dockerfile`
+- Branch de deploy: `backend/api-deploy`
+
+Variáveis mínimas em produção:
+
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `JWT_ALGORITHM=HS256`
+- `JWT_EXPIRE_MINUTES`
+- `CORS_ALLOW_ORIGINS`
+
+Observação importante: `JWT_ALGORITHM` incorreto (ex.: `SH256`) causa falha de autenticação e pode resultar em erro 500.
+
+## 11. Troubleshooting
+
+### 11.1 Login retorna 500 em produção
+
+Checklist:
+
+1. Confirmar `JWT_ALGORITHM=HS256` no Render.
+2. Confirmar branch e commit corretos no deploy.
+3. Confirmar `DATABASE_URL` do Neon com `sslmode=require`.
+4. Verificar roles inválidos em `users` (aceitos: `administrador`, `coordenacao`, `brigadista`, `fazendeiro`).
+5. Revisar logs do Render no momento da requisição.
+
+### 11.2 Swagger pedindo username/password
+
+A API usa `BearerAuth` no OpenAPI. Em `Authorize`, cole diretamente o token JWT.
+
+## 12. Status atual do escopo
+
+- API consolidada para autenticação, usuários, risco, focos, clima e reportes.
+- Controle de acesso por perfil/permissão ativo.
+- Moderação de reportes ativa por permissão.
+
+## 13. Lógica de cálculo de risco
+
+O sistema utiliza uma abordagem híbrida com normalização de variáveis e classificação final por faixa de score.
+
+### 13.1 Score agregado base (focos)
+
+Entrada:
+
+- `quantidade_focos`
+- `risco_fogo_mediano`
+- `frp_mediano`
+
+Normalização:
+
+- `focos_norm = clamp(quantidade_focos / 50)`
+- `risco_fogo_norm = clamp(risco_fogo_mediano)`
+- `frp_norm = clamp(frp_mediano / 100)`
+
+Fórmula:
+
+- `score_base = 100 * (0.45*focos_norm + 0.40*risco_fogo_norm + 0.15*frp_norm)`
+
+### 13.2 Score híbrido final
+
+Componentes combinados:
+
+- score de focos (base)
+- cicatriz de queimadas (mensal/anual)
+- risco de pastagem
+- histórico cruzado (pastagem queimada + nível histórico)
+
+Pesos do híbrido:
+
+- 55% focos
+- 20% cicatriz
+- 15% pastagem
+- 10% histórico
+
+Fórmula:
+
+- `score_hibrido = 100 * (0.55*focos + 0.20*cicatriz + 0.15*pastagem + 0.10*historico)`
+
+### 13.3 Classificação e tendência
+
+- `baixo`: score < 35
+- `medio`: 35 <= score < 65
+- `alto`: score >= 65
+
+Tendência para o dia seguinte:
+
+- `crescente` quando delta > 3
+- `decrescente` quando delta < -3
+- `estavel` caso contrário
+
+### 13.4 Persistência dos snapshots
+
+Os snapshots de risco são persistidos por `region_id + ano_mes` com upsert idempotente. Em reprocessamento, os registros são atualizados sem duplicação.
+
+## 14. Arquitetura de dados e ingestão
+
+- ingestão principal por `scripts/seed.py`
+- estratégia de upsert para evitar duplicidade
+- sincronização de datasets: focos, clima, cicatriz, pastagem, risco cruzado e focos georreferenciados
+- enriquecimento de região com coordenadas por estado e contexto temporal
