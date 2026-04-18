@@ -7,7 +7,7 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "cerrado-forca-web": {
+    "guarawatch-web": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -60,10 +60,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "cerrado-forca-web:build:production"
+              "buildTarget": "guarawatch-web:build:production"
             },
             "development": {
-              "buildTarget": "cerrado-forca-web:build:development"
+              "buildTarget": "guarawatch-web:build:development"
             }
           },
           "defaultConfiguration": "development"

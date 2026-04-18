@@ -116,8 +116,8 @@
   http://127.0.0.1:4173
 
 9.3) Credenciais seed do backend (para login)
-- Email: comando@cerradoforca.org
-- Senha: cerrado123
+- Email: comando@guarawatch.org
+- Senha: guarawatch123
 
 9.4) Validacao rapida manual
 1. Cadastrar novo usuario em /cadastro e confirmar redirecionamento para /perfil.

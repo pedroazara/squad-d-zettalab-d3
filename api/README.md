@@ -26,6 +26,23 @@ A API usa a variavel de ambiente `DATABASE_URL` para escolher o banco.
 - Com `DATABASE_URL`, a API usa PostgreSQL.
 - A ingestao de dados e manual via script de seed para manter o startup rapido.
 
+### Execucao via Docker Compose
+
+Esta e a forma recomendada para reproduzir o ambiente completo da API e do banco localmente.
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+Com isso, a API fica disponivel em `http://127.0.0.1:8000` e o PostgreSQL em `localhost:5432`.
+
+Para parar tudo:
+
+```bash
+docker compose down
+```
+
 ### PostgreSQL local com Docker Compose
 
 Na raiz do projeto:
@@ -38,7 +55,7 @@ docker compose ps
 No PowerShell, configure a conexao da API:
 
 ```powershell
-$env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/cerrado_forca"
+$env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/guarawatch"
 ```
 
 Para parar o banco local depois:
@@ -49,7 +66,7 @@ docker compose down
 
 ## 4. Como executar a API
 
-Importante: execute o servidor a partir da pasta `api` para evitar erro de importacao de modulos locais.
+Importante: se optar pela execucao local com Python, execute o servidor a partir da pasta `api` para evitar erro de importacao de modulos locais.
 
 ```bash
 cd api
@@ -286,7 +303,7 @@ Antes de deploy, execute:
 
 ```powershell
 cd api
-$env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/cerrado_forca"
+$env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/guarawatch"
 python scripts/predeploy_check.py --skip-seed
 ```
 
@@ -311,6 +328,7 @@ O script valida:
 - `POST /auth/register` e `POST /auth/login` retornam JWT.
 - Rotas administrativas exigem token Bearer e permissao adequada.
 - `users.active` controla desativacao logica; usuarios inativos nao autenticam e nao usam `/auth/me`.
+- Em Docker Compose, o backend usa o servico `postgres` da rede interna como banco principal.
 
 ## 9. Escopo atual
 

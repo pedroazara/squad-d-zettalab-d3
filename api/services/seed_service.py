@@ -35,10 +35,10 @@ def ensure_seed_data(db: Session) -> None:
         db,
         UserCreate(
             name="Ana Ribeiro",
-            email="comando@cerradoforca.org",
+            email="comando@guarawatch.org",
             organization="Coordenacao Regional do Cerrado",
             role="coordenacao",
-            password="cerrado123",
+            password="guarawatch123",
         ),
     )
 
@@ -46,7 +46,7 @@ def ensure_seed_data(db: Session) -> None:
         db,
         UserCreate(
             name="Lucas Martins",
-            email="brigada@cerradoforca.org",
+            email="brigada@guarawatch.org",
             organization="Brigada Integrada do Cerrado",
             role="brigadista",
             password="brigada123",

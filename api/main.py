@@ -23,7 +23,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(
-    title="Cerrado-Forca API",
+    title="GuaraWatch API",
     version="0.2.0",
     description="API inicial para autenticação, risco de incêndio e reportes colaborativos.",
     lifespan=lifespan,
@@ -58,7 +58,7 @@ def health() -> dict[str, str]:
 
 @app.get("/", tags=["health"])
 def root() -> dict[str, str]:
-    return {"message": "Cerrado-Forca API online", "docs": "/docs"}
+    return {"message": "GuaraWatch API online", "docs": "/docs"}
 
 
 @app.get("/favicon.ico", include_in_schema=False)

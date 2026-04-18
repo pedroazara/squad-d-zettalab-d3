@@ -1,4 +1,4 @@
-﻿# Cerrado-Força — Squad D | Zetta Lab 2025
+﻿# GuaráWatch — Squad D | Zetta Lab 2025
 
 Sistema web de monitoramento e prevenção de incêndios no Cerrado.
 

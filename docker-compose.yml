@@ -1,10 +1,10 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: cerrado_forca_postgres
+    container_name: guarawatch_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: cerrado_forca
+      POSTGRES_DB: guarawatch
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
@@ -12,10 +12,26 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d cerrado_forca"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d guarawatch"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  api:
+    build:
+      context: ./api
+    container_name: guarawatch_api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/guarawatch
+      JWT_SECRET: dev-secret-change-me-at-least-32-bytes
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRE_MINUTES: "120"
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
 
 volumes:
   postgres_data:

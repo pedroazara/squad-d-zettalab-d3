@@ -1,8 +1,8 @@
+import { getApiErrorMessage } from '@/services/apiClient';
+import { login } from '@/services/authApi';
+import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
-import { login } from '@/services/authApi';
-import { getApiErrorMessage } from '@/services/apiClient';
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -86,8 +86,8 @@ export default function Login() {
 
           <div className="rounded-lg border border-dashed border-guarawatch-accent/40 bg-guarawatch-bg px-4 py-3 mb-6 text-sm text-guarawatch-text">
             <p className="font-semibold">Acesso com backend real</p>
-            <p>Email seed: comando@cerradoforca.org</p>
-            <p>Senha seed: cerrado123</p>
+            <p>Email seed: comando@guarawatch.org</p>
+            <p>Senha seed: guarawatch123</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">

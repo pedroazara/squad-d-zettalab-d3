@@ -2,7 +2,7 @@
 
 ## 1. Objetivo desta entrega
 
-Definir o pontape inicial do frontend do projeto Cerrado-Forca com:
+Definir o pontape inicial do frontend do projeto GuaráWatch com:
 
 - tecnologia base escolhida
 - organizacao inicial do codigo
