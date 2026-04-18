@@ -13,6 +13,7 @@ from models.entities import (
     ClimateMonthly,
     CrossRiskHistorical,
     FireEvent,
+    FirePoint,
     PastureRisk,
     Region,
     RiskSnapshot,
@@ -33,6 +34,7 @@ SCAR_MONTHLY_FILE = PROJECT_ROOT / "data" / "processed" / "cicatriz" / "cicatriz
 SCAR_ANNUAL_FILE = PROJECT_ROOT / "data" / "processed" / "cicatriz" / "cicatriz_fogo_anual.csv"
 PASTURE_RISK_FILE = PROJECT_ROOT / "data" / "processed" / "pastagem" / "pastagem_risco.csv"
 RISK_CROSSED_FILE = PROJECT_ROOT / "data" / "processed" / "risco" / "dados_risco_cruzado.csv"
+FIRE_POINTS_FILE = PROJECT_ROOT / "data" / "interim" / "focos" / "focos_limpos_detalhados.csv"
 
 
 @dataclass(frozen=True)
@@ -131,6 +133,20 @@ class HybridSupportIndex:
     max_scar_annual: float
     max_pasture: float
     max_crossed_perc: float
+
+
+@dataclass(frozen=True)
+class FirePointRecord:
+    data_hora: str
+    satelite: str
+    estado: str
+    municipio: str
+    bioma: str
+    risco_fogo: float
+    frp: float
+    latitude: float
+    longitude: float
+    ano_mes: str
 
 
 _STATE_COORDINATES: dict[str, tuple[float, float]] = {
@@ -263,6 +279,38 @@ def _parse_nullable_float(value: str) -> float | None:
     if not normalized_value:
         return None
     return float(normalized_value)
+
+
+@lru_cache(maxsize=1)
+def _load_fire_point_records() -> tuple[FirePointRecord, ...]:
+    if not FIRE_POINTS_FILE.exists():
+        return tuple()
+
+    records: list[FirePointRecord] = []
+    with FIRE_POINTS_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
+        reader = csv.DictReader(data_file)
+        for row in reader:
+            latitude = row.get("Latitude", "").strip()
+            longitude = row.get("Longitude", "").strip()
+            if not latitude or not longitude:
+                continue
+
+            records.append(
+                FirePointRecord(
+                    data_hora=row.get("DataHora", "").strip(),
+                    satelite=row.get("Satelite", "").strip(),
+                    estado=_fix_text(row.get("Estado_Clean", row.get("Estado", ""))),
+                    municipio=_fix_text(row.get("Municipio_Clean", row.get("Municipio", ""))),
+                    bioma=_fix_text(row.get("Bioma", "")),
+                    risco_fogo=_parse_float(row.get("RiscoFogo", "0")),
+                    frp=_parse_float(row.get("FRP", "0")),
+                    latitude=float(latitude),
+                    longitude=float(longitude),
+                    ano_mes=row.get("AnoMes", "").strip(),
+                )
+            )
+
+    return tuple(records)
 
 
 @lru_cache(maxsize=1)
@@ -855,6 +903,43 @@ def sync_cross_risk_dataset(db: Session) -> None:
     db.commit()
 
 
+def sync_fire_points_dataset(db: Session) -> None:
+    records = _load_fire_point_records()
+    if not records:
+        return
+
+    for record in records:
+        statement = (
+            pg_insert(FirePoint)
+            .values(
+                data_hora=record.data_hora,
+                satelite=record.satelite,
+                estado=record.estado,
+                municipio=record.municipio,
+                bioma=record.bioma,
+                risco_fogo=record.risco_fogo,
+                frp=record.frp,
+                latitude=record.latitude,
+                longitude=record.longitude,
+                ano_mes=record.ano_mes,
+            )
+            .on_conflict_do_update(
+                index_elements=[FirePoint.data_hora, FirePoint.satelite, FirePoint.latitude, FirePoint.longitude],
+                set_={
+                    "estado": record.estado,
+                    "municipio": record.municipio,
+                    "bioma": record.bioma,
+                    "risco_fogo": record.risco_fogo,
+                    "frp": record.frp,
+                    "ano_mes": record.ano_mes,
+                },
+            )
+        )
+        db.execute(statement)
+
+    db.commit()
+
+
 def sync_state_risk_dataset(db: Session) -> None:
     records = _load_state_risk_records()
     if not records:
@@ -1083,6 +1168,48 @@ def list_fire_items(
                 "frp_mediano": fire_event.frp_mediano,
                 "score": score,
                 "risco": classify_risk(score),
+            }
+        )
+
+    return records
+
+
+def list_fire_point_items(
+    db: Session,
+    ano_mes: str | None = None,
+    estado: str | None = None,
+    municipio: str | None = None,
+    limit: int = 1000,
+    offset: int = 0,
+) -> list[dict[str, object]]:
+    query = select(FirePoint)
+
+    if ano_mes is not None:
+        query = query.where(FirePoint.ano_mes == ano_mes)
+
+    if estado is not None:
+        query = query.where(func.upper(FirePoint.estado) == estado.strip().upper())
+
+    if municipio is not None:
+        query = query.where(func.upper(FirePoint.municipio) == municipio.strip().upper())
+
+    query = query.order_by(FirePoint.ano_mes.desc(), FirePoint.estado, FirePoint.municipio, FirePoint.id).offset(offset).limit(limit)
+
+    records: list[dict[str, object]] = []
+    for item in db.execute(query).scalars().all():
+        records.append(
+            {
+                "id": item.id,
+                "data_hora": item.data_hora,
+                "satelite": item.satelite,
+                "estado": item.estado,
+                "municipio": item.municipio,
+                "bioma": item.bioma,
+                "risco_fogo": item.risco_fogo,
+                "frp": item.frp,
+                "latitude": item.latitude,
+                "longitude": item.longitude,
+                "ano_mes": item.ano_mes,
             }
         )
 

@@ -8,6 +8,7 @@ from services.region_service import (
     sync_burn_scar_dataset,
     sync_climate_dataset,
     sync_cross_risk_dataset,
+    sync_fire_points_dataset,
     sync_foco_dataset,
     sync_pasture_risk_dataset,
     sync_state_risk_dataset,
@@ -18,6 +19,7 @@ def _run_all_dataset_syncs(db: Session) -> None:
     sync_burn_scar_dataset(db)
     sync_pasture_risk_dataset(db)
     sync_cross_risk_dataset(db)
+    sync_fire_points_dataset(db)
     sync_climate_dataset(db)
     sync_foco_dataset(db)
     sync_state_risk_dataset(db)

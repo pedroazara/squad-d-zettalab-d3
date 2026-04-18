@@ -140,3 +140,23 @@ class CrossRiskHistorical(Base):
     perc_pastagem_queimada: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     nivel_risco_historico: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FirePoint(Base):
+    __tablename__ = "fire_points"
+    __table_args__ = (
+        UniqueConstraint("data_hora", "satelite", "latitude", "longitude", name="uq_fire_points_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    data_hora: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    satelite: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    estado: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    municipio: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    bioma: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    risco_fogo: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    frp: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    latitude: Mapped[float] = mapped_column(Float, nullable=False, index=True)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False, index=True)
+    ano_mes: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
