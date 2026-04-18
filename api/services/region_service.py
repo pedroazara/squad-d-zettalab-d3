@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
 from sqlalchemy import desc, func, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from models.entities import (
@@ -16,14 +15,7 @@ from models.entities import (
     RiskSnapshot,
 )
 from services.ingestion.file_loaders import (
-    BurnScarAnnualRecord,
-    BurnScarMonthlyRecord,
-    ClimateRecord,
-    CrossRiskRecord,
     FocoRecord,
-    FirePointRecord,
-    PastureRiskRecord,
-    StateRiskRecord,
     load_burn_scar_annual_records,
     load_burn_scar_monthly_records,
     load_climate_records,
@@ -32,17 +24,25 @@ from services.ingestion.file_loaders import (
     load_pasture_risk_records,
     load_records,
     load_state_risk_records,
-    parse_float,
-    parse_int,
-    parse_nullable_float,
 )
-from services.ingestion.normalizers import fix_text, normalize_key, state_coordinates
+from services.ingestion.normalizers import normalize_key, state_coordinates
+from services.repositories.region_repository import (
+    upsert_fire_event,
+    upsert_region,
+    upsert_risk_snapshot,
+)
+from services.risk_hybrid_service import (
+    hybrid_score,
+    load_hybrid_support_index,
+    score_for_state_risk,
+)
 from services.risk_service import (
     AggregateRiskInput,
     calculate_aggregate_risk_score,
     classify_risk,
     forecast_tendency,
 )
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
 @dataclass(frozen=True)
@@ -61,18 +61,6 @@ class RegionContext:
     @property
     def nome(self) -> str:
         return f"{self.municipio} - {self.estado} ({self.ano_mes})"
-
-
-@dataclass(frozen=True)
-class HybridSupportIndex:
-    scar_monthly: dict[tuple[str, int, int], float]
-    scar_annual: dict[tuple[str, int], float]
-    pasture_annual: dict[tuple[str, int], float]
-    crossed_annual: dict[tuple[str, int], tuple[float, str]]
-    max_scar_monthly: float
-    max_scar_annual: float
-    max_pasture: float
-    max_crossed_perc: float
 
 
 def _build_region_snapshot(region: RegionContext) -> dict[str, float | int | str]:
@@ -117,284 +105,13 @@ def _build_region_snapshot_with_climate(
 
 
 
-def _load_hybrid_support_index() -> HybridSupportIndex:
-    scar_monthly: dict[tuple[str, int, int], float] = {}
-    scar_annual: dict[tuple[str, int], float] = {}
-    pasture_annual: dict[tuple[str, int], float] = {}
-    crossed_annual: dict[tuple[str, int], tuple[float, str]] = {}
-
-    max_scar_monthly = 1.0
-    max_scar_annual = 1.0
-    max_pasture = 1.0
-    max_crossed_perc = 1.0
-
-    for item in load_burn_scar_monthly_records():
-        key = (normalize_key(item.estado), item.ano, item.mes)
-        scar_monthly[key] = max(scar_monthly.get(key, 0.0), item.area_queimada_ha)
-        max_scar_monthly = max(max_scar_monthly, item.area_queimada_ha)
-
-    for item in load_burn_scar_annual_records():
-        key = (normalize_key(item.estado), item.ano)
-        scar_annual[key] = max(scar_annual.get(key, 0.0), item.area_queimada_ha)
-        max_scar_annual = max(max_scar_annual, item.area_queimada_ha)
-
-    for item in load_pasture_risk_records():
-        key = (normalize_key(item.estado), item.ano)
-        pasture_annual[key] = max(pasture_annual.get(key, 0.0), item.area_pastagem_risco_ha)
-        max_pasture = max(max_pasture, item.area_pastagem_risco_ha)
-
-    for item in load_cross_risk_records():
-        key = (normalize_key(item.estado), item.ano)
-        current = crossed_annual.get(key)
-        if current is None or item.perc_pastagem_queimada > current[0]:
-            crossed_annual[key] = (item.perc_pastagem_queimada, item.nivel_risco_historico)
-        max_crossed_perc = max(max_crossed_perc, item.perc_pastagem_queimada)
-
-    return HybridSupportIndex(
-        scar_monthly=scar_monthly,
-        scar_annual=scar_annual,
-        pasture_annual=pasture_annual,
-        crossed_annual=crossed_annual,
-        max_scar_monthly=max_scar_monthly,
-        max_scar_annual=max_scar_annual,
-        max_pasture=max_pasture,
-        max_crossed_perc=max_crossed_perc,
-    )
-
-
-def _build_region_coordinates(record: FocoRecord) -> tuple[float, float]:
-    return _state_coordinates(record.estado)
-
-
-def _upsert_region(db: Session, record: FocoRecord) -> Region:
-    latitude, longitude = _build_region_coordinates(record)
-    statement = (
-        pg_insert(Region)
-        .values(
-            estado=record.estado,
-            municipio=record.municipio,
-            bioma_predominante=record.bioma or None,
-            latitude=latitude,
-            longitude=longitude,
-        )
-        .on_conflict_do_nothing(index_elements=[Region.estado, Region.municipio])
-        .returning(Region.id)
-    )
-
-    inserted_id = db.execute(statement).scalar_one_or_none()
-    if inserted_id is not None:
-        return db.scalar(select(Region).where(Region.id == inserted_id))
-
-    existing = db.scalar(
-        select(Region).where(
-            func.upper(Region.estado) == record.estado.upper(),
-            func.upper(Region.municipio) == record.municipio.upper(),
-        )
-    )
-    if existing is None:
-        raise RuntimeError(f"Nao foi possivel localizar a regiao {record.estado} / {record.municipio}")
-
-    if existing.bioma_predominante is None and record.bioma:
-        existing.bioma_predominante = record.bioma
-    if existing.latitude is None or existing.longitude is None:
-        existing.latitude = latitude
-        existing.longitude = longitude
-    return existing
-
-
-def _upsert_fire_event(db: Session, region_id: int, record: FocoRecord) -> FireEvent:
-    statement = (
-        pg_insert(FireEvent)
-        .values(
-            region_id=region_id,
-            ano=record.ano,
-            mes=record.mes,
-            ano_mes=record.ano_mes,
-            quantidade_focos=record.quantidade_focos,
-            risco_fogo_mediano=record.risco_fogo_mediano,
-            frp_mediano=record.frp_mediano,
-        )
-        .on_conflict_do_update(
-            index_elements=[FireEvent.region_id, FireEvent.ano_mes],
-            set_={
-                "ano": record.ano,
-                "mes": record.mes,
-                "quantidade_focos": record.quantidade_focos,
-                "risco_fogo_mediano": record.risco_fogo_mediano,
-                "frp_mediano": record.frp_mediano,
-            },
-        )
-        .returning(FireEvent.id)
-    )
-
-    event_id = db.execute(statement).scalar_one_or_none()
-    if event_id is None:
-        existing_event = db.scalar(
-            select(FireEvent).where(FireEvent.region_id == region_id, FireEvent.ano_mes == record.ano_mes)
-        )
-        if existing_event is None:
-            raise RuntimeError(f"Nao foi possivel localizar o evento {region_id} / {record.ano_mes}")
-        return existing_event
-
-    return db.scalar(select(FireEvent).where(FireEvent.id == event_id))
-
-
-def _upsert_risk_snapshot(
-    db: Session,
-    region_id: int,
-    record: FocoRecord,
-    support_index: HybridSupportIndex,
-    state_risk_lookup: dict[str, tuple[float, str]],
-) -> RiskSnapshot:
-    current_score = _hybrid_score(record, support_index, state_risk_lookup)
-    tomorrow_score = _hybrid_score(_build_tomorrow_record(record), support_index, state_risk_lookup)
-
-    statement = (
-        pg_insert(RiskSnapshot)
-        .values(
-            region_id=region_id,
-            ano_mes=record.ano_mes,
-            score=current_score,
-            risco=classify_risk(current_score),
-            score_amanha=tomorrow_score,
-            risco_amanha=classify_risk(tomorrow_score),
-            tendencia=forecast_tendency(current_score, tomorrow_score),
-        )
-        .on_conflict_do_update(
-            index_elements=[RiskSnapshot.region_id, RiskSnapshot.ano_mes],
-            set_={
-                "score": current_score,
-                "risco": classify_risk(current_score),
-                "score_amanha": tomorrow_score,
-                "risco_amanha": classify_risk(tomorrow_score),
-                "tendencia": forecast_tendency(current_score, tomorrow_score),
-            },
-        )
-        .returning(RiskSnapshot.id)
-    )
-
-    snapshot_id = db.execute(statement).scalar_one_or_none()
-    if snapshot_id is None:
-        existing_snapshot = db.scalar(
-            select(RiskSnapshot).where(RiskSnapshot.region_id == region_id, RiskSnapshot.ano_mes == record.ano_mes)
-        )
-        if existing_snapshot is None:
-            raise RuntimeError(f"Nao foi possivel localizar o risco {region_id} / {record.ano_mes}")
-        return existing_snapshot
-
-    return db.scalar(select(RiskSnapshot).where(RiskSnapshot.id == snapshot_id))
-
-
-def _score_for_state_risk(risco_geral: str) -> tuple[float, str]:
-    normalized = _normalize(risco_geral)
-    if normalized == "ALTO":
-        return 82.0, "alto"
-    if normalized == "MEDIO":
-        return 58.0, "medio"
-    return 28.0, "baixo"
-
-
-def _normalize_component(value: float, max_value: float) -> float:
-    if max_value <= 0:
-        return 0.0
-    return max(0.0, min(1.0, value / max_value))
-
-
-def _historical_level_to_component(level: str) -> float:
-    normalized = _normalize_key(level)
-    if normalized == "ALTO":
-        return 0.9
-    if normalized == "MEDIO":
-        return 0.6
-    if normalized == "BAIXO":
-        return 0.3
-    return 0.4
-
-
-def _state_fallback_component(state_risk_lookup: dict[str, tuple[float, str]], estado: str) -> float:
-    entry = state_risk_lookup.get(_normalize_key(estado))
-    if entry is None:
-        return 0.4
-    score, _ = entry
-    return max(0.0, min(1.0, score / 100.0))
-
-
-def _hybrid_components(
-    record: FocoRecord,
-    support_index: HybridSupportIndex,
-    state_risk_lookup: dict[str, tuple[float, str]],
-) -> tuple[float, float, float, float]:
-    score_focos = calculate_aggregate_risk_score(
-        AggregateRiskInput(
-            quantidade_focos=record.quantidade_focos,
-            risco_fogo_mediano=record.risco_fogo_mediano,
-            frp_mediano=record.frp_mediano,
-        )
-    ) / 100.0
-
-    state_key = _normalize_key(record.estado)
-    scar_monthly_value = support_index.scar_monthly.get((state_key, record.ano, record.mes), 0.0)
-    scar_annual_value = support_index.scar_annual.get((state_key, record.ano), 0.0)
-    scar_component = _normalize_component(scar_monthly_value, support_index.max_scar_monthly)
-    if scar_component == 0.0:
-        scar_component = _normalize_component(scar_annual_value, support_index.max_scar_annual)
-
-    pasture_value = support_index.pasture_annual.get((state_key, record.ano), 0.0)
-    pasture_component = _normalize_component(pasture_value, support_index.max_pasture)
-
-    historical_entry = support_index.crossed_annual.get((state_key, record.ano))
-    if historical_entry is not None:
-        crossed_perc, level = historical_entry
-        perc_component = _normalize_component(crossed_perc, support_index.max_crossed_perc)
-        level_component = _historical_level_to_component(level)
-        historical_component = (0.65 * perc_component) + (0.35 * level_component)
-    else:
-        historical_component = _state_fallback_component(state_risk_lookup, record.estado)
-
-    return score_focos, scar_component, pasture_component, historical_component
-
-
-def _hybrid_score(
-    record: FocoRecord,
-    support_index: HybridSupportIndex,
-    state_risk_lookup: dict[str, tuple[float, str]],
-) -> float:
-    score_focos, scar_component, pasture_component, historical_component = _hybrid_components(
-        record,
-        support_index,
-        state_risk_lookup,
-    )
-
-    score = 100.0 * (
-        (0.55 * score_focos)
-        + (0.20 * scar_component)
-        + (0.15 * pasture_component)
-        + (0.10 * historical_component)
-    )
-    return round(max(0.0, min(100.0, score)), 2)
-
-
-def _build_tomorrow_record(record: FocoRecord) -> FocoRecord:
-    return FocoRecord(
-        estado=record.estado,
-        municipio=record.municipio,
-        ano=record.ano,
-        mes=record.mes,
-        ano_mes=record.ano_mes,
-        quantidade_focos=max(1, round(record.quantidade_focos * 1.15)),
-        risco_fogo_mediano=min(1.0, record.risco_fogo_mediano + 0.05),
-        frp_mediano=record.frp_mediano * 1.1,
-        bioma=record.bioma,
-    )
-
-
 def sync_foco_dataset(db: Session) -> None:
     records = load_records()
-    support_index = _load_hybrid_support_index()
+    support_index = load_hybrid_support_index()
 
     state_risk_lookup: dict[str, tuple[float, str]] = {}
     for item in load_state_risk_records():
-        state_risk_lookup[normalize_key(item.estado)] = _score_for_state_risk(item.risco_geral)
+        state_risk_lookup[normalize_key(item.estado)] = score_for_state_risk(item.risco_geral)
 
     region_lookup: dict[tuple[str, str], Region] = {}
 
@@ -403,18 +120,18 @@ def sync_foco_dataset(db: Session) -> None:
         region = region_lookup.get(key)
 
         if region is None:
-            region = _upsert_region(db, record)
+            region = upsert_region(db, record)
             region_lookup[key] = region
         else:
             if region.bioma_predominante is None and record.bioma:
                 region.bioma_predominante = record.bioma
             if region.latitude is None or region.longitude is None:
-                latitude, longitude = _build_region_coordinates(record)
+                latitude, longitude = state_coordinates(record.estado)
                 region.latitude = latitude
                 region.longitude = longitude
 
-        _upsert_fire_event(db, region.id, record)
-        _upsert_risk_snapshot(db, region.id, record, support_index, state_risk_lookup)
+        upsert_fire_event(db, region.id, record)
+        upsert_risk_snapshot(db, region.id, record, support_index, state_risk_lookup)
 
     db.commit()
 
@@ -593,7 +310,7 @@ def sync_state_risk_dataset(db: Session) -> None:
     state_levels: dict[str, tuple[float, str]] = {}
     for record in records:
         state_key = normalize_key(record.estado)
-        score, risco = _score_for_state_risk(record.risco_geral)
+        score, risco = score_for_state_risk(record.risco_geral)
         current = state_levels.get(state_key)
         if current is None or severity_order[risco] > severity_order[current[1]]:
             state_levels[state_key] = (score, risco)
