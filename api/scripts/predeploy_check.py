@@ -76,7 +76,7 @@ def expect_status(status_code: int, expected: set[int], context: str) -> None:
 def smoke_test_api() -> None:
     _log("Running API smoke tests")
     timestamp = int(time.time())
-    test_email = f"predeploy_{timestamp}@cerrado.local"
+    test_email = f"predeploy_{timestamp}@example.com"
 
     with TestClient(app) as client:
         health = client.get("/health")
