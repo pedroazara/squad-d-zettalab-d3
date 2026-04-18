@@ -5,3 +5,7 @@ email-validator
 psycopg[binary]
 httpx
 PyJWT
+pytest
+pytest-asyncio
+pytest-cov
+pytest-env
