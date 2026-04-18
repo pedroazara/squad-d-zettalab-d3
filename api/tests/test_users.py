@@ -97,7 +97,7 @@ class TestUpdateUser:
         """Test that user cannot promote themselves."""
         response = client.patch(
             f"/users/{admin_user.id}",
-            json={"role": "super_admin"},
+            json={"role": "coordenacao"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert response.status_code == 403
@@ -124,7 +124,7 @@ class TestUpdateUser:
 class TestDeactivateUser:
     """Tests for deactivating users."""
     
-    def test_deactivate_user(self, client, admin_token, brigadista_user):
+    def test_deactivate_user(self, client, admin_token, brigadista_user, test_db_session):
         """Test deactivating a user."""
         response = client.patch(
             f"/users/{brigadista_user.id}",
@@ -132,8 +132,9 @@ class TestDeactivateUser:
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert response.status_code == 200
-        data = response.json()
-        assert data["active"] is False
+        assert response.json()["role"] == brigadista_user.role
+        test_db_session.refresh(brigadista_user)
+        assert brigadista_user.active is False
     
     def test_deactivate_own_user_blocked(self, client, admin_token, admin_user):
         """Test that user cannot deactivate themselves."""
@@ -168,8 +169,9 @@ class TestDeactivateUser:
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert response.status_code == 200
-        data = response.json()
-        assert data["active"] is True
+        assert response.json()["role"] == "brigadista"
+        test_db_session.refresh(user)
+        assert user.active is True
     
     def test_inactive_user_cannot_login(self, client, test_db_session):
         """Test that inactive user cannot login."""

@@ -72,9 +72,10 @@ class TestAuthRegister:
         )
         assert response.status_code == 201
         data = response.json()
-        assert data["email"] == "newuser@example.com"
-        assert data["name"] == "New User"
-        assert data["role"] == "brigadista"
+        assert data["message"] == "Cadastro realizado com sucesso"
+        assert data["user"]["email"] == "newuser@example.com"
+        assert data["user"]["name"] == "New User"
+        assert data["user"]["role"] == "brigadista"
     
     def test_register_duplicate_email(self, client, admin_user):
         """Test registration with existing email."""
@@ -144,13 +145,13 @@ class TestAuthPermissions:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "permissions" in data
-        assert isinstance(data["permissions"], list)
+        assert isinstance(data, list)
+        assert "users.read" in data
     
     def test_check_permission_allowed(self, client, admin_token):
         """Test checking if user has specific permission."""
         response = client.get(
-            "/auth/permissions/users.read",
+            "/auth/permissions/reports-review",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert response.status_code == 200
@@ -158,7 +159,7 @@ class TestAuthPermissions:
     def test_check_permission_denied(self, client, brigadista_token):
         """Test checking permission that user doesn't have."""
         response = client.get(
-            "/auth/permissions/users.read",
+            "/auth/permissions/reports-review",
             headers={"Authorization": f"Bearer {brigadista_token}"},
         )
         assert response.status_code == 403

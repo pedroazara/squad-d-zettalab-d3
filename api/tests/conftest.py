@@ -1,7 +1,6 @@
 import pytest
-import os
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
 from models.entities import Base
@@ -11,32 +10,41 @@ from services.auth_service import hash_password, create_user
 
 
 @pytest.fixture(scope="function")
-def test_db_session():
-    """Create a test database session with in-memory SQLite."""
+def test_db_engine(tmp_path):
+    """Create a temporary SQLite database for each test."""
+    database_path = tmp_path / "test.db"
     engine = create_engine(
-        "sqlite:///:memory:",
+        f"sqlite:///{database_path}",
         connect_args={"check_same_thread": False},
     )
     # Criar todas as tabelas
     Base.metadata.create_all(engine)
-    
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture(scope="function")
+def test_db_session(test_db_engine):
+    """Create a test database session."""
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_db_engine)
     session = SessionLocal()
     
     yield session
     
     session.close()
-    engine.dispose()
 
 
 @pytest.fixture(scope="function")
-def client(test_db_session):
+def client(test_db_engine):
     """Create FastAPI test client with overridden database."""
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_db_engine)
+
     def _override_get_db():
+        db = SessionLocal()
         try:
-            yield test_db_session
+            yield db
         finally:
-            pass  # Don't close here, pytest fixture handles it
+            db.close()
     
     app.dependency_overrides[get_db] = _override_get_db
     yield TestClient(app)

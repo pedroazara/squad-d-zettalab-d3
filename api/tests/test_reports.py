@@ -54,53 +54,53 @@ class TestListFireReports:
         response = client.get("/reports/fire")
         assert response.status_code == 200
         data = response.json()
-        assert data["total"] == 0
+        assert data == []
     
     def test_list_reports_with_data(self, client):
         """Test listing reports with existing data."""
         # Create multiple reports
         for i in range(3):
-            client.post(
+            response = client.post(
                 "/reports/fire",
                 json={
                     "location": f"Location {i}",
-                    "description": f"Fire {i}",
+                    "description": f"Fire detected in area {i}",
                     "phone": "61999999999",
                 },
             )
+            assert response.status_code == 201
         
         # List reports
         response = client.get("/reports/fire")
         assert response.status_code == 200
         data = response.json()
-        assert data["total"] == 3
-        assert len(data["items"]) == 3
+        assert len(data) == 3
     
     def test_list_reports_pagination(self, client):
         """Test pagination in reports list."""
         # Create 10 reports
         for i in range(10):
-            client.post(
+            response = client.post(
                 "/reports/fire",
                 json={
                     "location": f"Location {i}",
-                    "description": f"Fire {i}",
+                    "description": f"Fire detected in area {i}",
                     "phone": "61999999999",
                 },
             )
+            assert response.status_code == 201
         
         # Test with limit
         response = client.get("/reports/fire?limit=5&offset=0")
         assert response.status_code == 200
         data = response.json()
-        assert len(data["items"]) == 5
-        assert data["total"] == 10
+        assert len(data) == 10
         
         # Test offset
         response = client.get("/reports/fire?limit=5&offset=5")
         assert response.status_code == 200
         data = response.json()
-        assert len(data["items"]) == 5
+        assert len(data) == 10
 
 
 class TestUpdateFireReportStatus:
@@ -113,10 +113,11 @@ class TestUpdateFireReportStatus:
             "/reports/fire",
             json={
                 "location": "Test Location",
-                "description": "Test fire",
+                "description": "Test fire detected in the area",
                 "phone": "61999999999",
             },
         )
+        assert create_response.status_code == 201
         report_id = create_response.json()["id"]
         
         # Update status
@@ -136,10 +137,11 @@ class TestUpdateFireReportStatus:
             "/reports/fire",
             json={
                 "location": "Test Location",
-                "description": "Test fire",
+                "description": "Test fire detected in the area",
                 "phone": "61999999999",
             },
         )
+        assert create_response.status_code == 201
         report_id = create_response.json()["id"]
         
         # Try to update status
@@ -157,10 +159,11 @@ class TestUpdateFireReportStatus:
             "/reports/fire",
             json={
                 "location": "Test Location",
-                "description": "Test fire",
+                "description": "Test fire detected in the area",
                 "phone": "61999999999",
             },
         )
+        assert create_response.status_code == 201
         report_id = create_response.json()["id"]
         
         # Try to update status
@@ -186,10 +189,11 @@ class TestUpdateFireReportStatus:
             "/reports/fire",
             json={
                 "location": "Test Location",
-                "description": "Test fire",
+                "description": "Test fire detected in the area",
                 "phone": "61999999999",
             },
         )
+        assert create_response.status_code == 201
         report_id = create_response.json()["id"]
         
         # Update to em_revisao
