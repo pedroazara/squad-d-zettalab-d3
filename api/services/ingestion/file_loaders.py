@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from .normalizers import fix_text, normalize_key
+from .normalizers import canonical_state_name, fix_text, normalize_key
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -21,6 +21,8 @@ SCAR_ANNUAL_FILE = PROJECT_ROOT / "data" / "processed" / "cicatriz" / "cicatriz_
 PASTURE_RISK_FILE = PROJECT_ROOT / "data" / "processed" / "pastagem" / "pastagem_risco.csv"
 RISK_CROSSED_FILE = PROJECT_ROOT / "data" / "processed" / "risco" / "dados_risco_cruzado.csv"
 FIRE_POINTS_FILE = PROJECT_ROOT / "data" / "interim" / "focos" / "focos_limpos_detalhados.csv"
+FIRE_POINTS_FALLBACK_FILE = PROJECT_ROOT / "data" / "processed" / "focos" / "focos_limpos_detalhados.csv"
+FAUNA_FILE = PROJECT_ROOT / "data" / "fauna_cerrado" / "fauna_cerrado_2019.csv"
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,23 @@ class FirePointRecord:
     ano_mes: str
 
 
+@dataclass(frozen=True)
+class FaunaRecord:
+    nome_cientifico: str
+    nome_popular: str
+    grupo: str
+    status_iucn: str
+    bioma: str
+    bioma_principal: str
+    habitat_afetado_pct: float
+    latitude: float
+    longitude: float
+    estado: str
+    ano: int
+    mes: int
+    ano_mes: str
+
+
 def parse_int(value: str) -> int:
     """Converte string para int com tratamento de decimais."""
     return int(float(value))
@@ -129,11 +148,12 @@ def parse_nullable_float(value: str) -> float | None:
 @lru_cache(maxsize=1)
 def load_fire_point_records() -> tuple[FirePointRecord, ...]:
     """Carrega pontos de fogo georreferenciados com cache."""
-    if not FIRE_POINTS_FILE.exists():
+    data_path = FIRE_POINTS_FILE if FIRE_POINTS_FILE.exists() else FIRE_POINTS_FALLBACK_FILE
+    if not data_path.exists():
         return tuple()
 
     records: list[FirePointRecord] = []
-    with FIRE_POINTS_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
+    with data_path.open("r", encoding="utf-8-sig", newline="") as data_file:
         reader = csv.DictReader(data_file)
         for row in reader:
             latitude = row.get("Latitude", "").strip()
@@ -145,7 +165,7 @@ def load_fire_point_records() -> tuple[FirePointRecord, ...]:
                 FirePointRecord(
                     data_hora=row.get("DataHora", "").strip(),
                     satelite=row.get("Satelite", "").strip(),
-                    estado=fix_text(row.get("Estado_Clean", row.get("Estado", ""))),
+                    estado=canonical_state_name(row.get("Estado_Clean", row.get("Estado", ""))),
                     municipio=fix_text(row.get("Municipio_Clean", row.get("Municipio", ""))),
                     bioma=fix_text(row.get("Bioma", "")),
                     risco_fogo=parse_float(row.get("RiscoFogo", "0")),
@@ -173,7 +193,7 @@ def load_records() -> tuple[FocoRecord, ...]:
             records.append(
                 FocoRecord(
                     municipio=row["Municipio_Clean"].strip(),
-                    estado=row["Estado_Clean"].strip(),
+                    estado=canonical_state_name(row["Estado_Clean"]),
                     ano=parse_int(row["Ano"]),
                     mes=parse_int(row["Mes"]),
                     ano_mes=row["AnoMes"].strip(),
@@ -224,7 +244,7 @@ def load_state_risk_records() -> tuple[StateRiskRecord, ...]:
         for row in reader:
             records.append(
                 StateRiskRecord(
-                    estado=row["estado"].strip(),
+                    estado=canonical_state_name(row["estado"]),
                     risco_geral=row["risco_geral"].strip(),
                 )
             )
@@ -245,7 +265,7 @@ def load_burn_scar_monthly_records() -> tuple[BurnScarMonthlyRecord, ...]:
             records.append(
                 BurnScarMonthlyRecord(
                     bioma=fix_text(row.get("bioma", "")),
-                    estado=fix_text(row.get("estado", "")),
+                    estado=canonical_state_name(row.get("estado", "")),
                     ano=parse_int(row.get("ano", "0")),
                     mes=parse_int(row.get("mes_numero", "0")),
                     area_queimada_ha=parse_float(row.get("area_queimada_ha", "0")),
@@ -268,7 +288,7 @@ def load_burn_scar_annual_records() -> tuple[BurnScarAnnualRecord, ...]:
             records.append(
                 BurnScarAnnualRecord(
                     bioma=fix_text(row.get("bioma", "")),
-                    estado=fix_text(row.get("estado", "")),
+                    estado=canonical_state_name(row.get("estado", "")),
                     ano=parse_int(row.get("ano", "0")),
                     area_queimada_ha=parse_float(row.get("area_queimada_ha", "0")),
                 )
@@ -290,7 +310,7 @@ def load_pasture_risk_records() -> tuple[PastureRiskRecord, ...]:
             records.append(
                 PastureRiskRecord(
                     bioma=fix_text(row.get("bioma", "")),
-                    estado=fix_text(row.get("estado", "")),
+                    estado=canonical_state_name(row.get("estado", "")),
                     uf=fix_text(row.get("uf", "")) or None,
                     ano=parse_int(row.get("ano", "0")),
                     area_pastagem_risco_ha=parse_float(row.get("area_pastagem_risco_ha", "0")),
@@ -313,13 +333,51 @@ def load_cross_risk_records() -> tuple[CrossRiskRecord, ...]:
             records.append(
                 CrossRiskRecord(
                     bioma=fix_text(row.get("bioma", "")),
-                    estado=fix_text(row.get("estado", "")),
+                    estado=canonical_state_name(row.get("estado", "")),
                     uf=fix_text(row.get("uf", "")) or None,
                     ano=parse_int(row.get("ano", "0")),
                     area_queimada_ha=parse_float(row.get("area_queimada_ha", "0")),
                     area_pastagem_risco_ha=parse_float(row.get("area_pastagem_risco_ha", "0")),
                     perc_pastagem_queimada=parse_float(row.get("perc_pastagem_queimada", "0")),
                     nivel_risco_historico=fix_text(row.get("nivel_risco_historico", "")),
+                )
+            )
+
+    return tuple(records)
+
+
+@lru_cache(maxsize=1)
+def load_fauna_records() -> tuple[FaunaRecord, ...]:
+    """Carrega ocorrencias de fauna georreferenciadas com cache."""
+    if not FAUNA_FILE.exists():
+        return tuple()
+
+    records: list[FaunaRecord] = []
+    with FAUNA_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
+        reader = csv.DictReader(data_file)
+        for row in reader:
+            latitude = row.get("latitude", "").strip()
+            longitude = row.get("longitude", "").strip()
+            if not latitude or not longitude:
+                continue
+
+            ano = parse_int(row.get("ano", "0"))
+            mes = parse_int(row.get("mes", "0"))
+            records.append(
+                FaunaRecord(
+                    nome_cientifico=fix_text(row.get("nome_cientifico", "")),
+                    nome_popular=fix_text(row.get("nome_popular", "")),
+                    grupo=fix_text(row.get("grupo", "")),
+                    status_iucn=fix_text(row.get("status_iucn", "")),
+                    bioma=fix_text(row.get("bioma", "")),
+                    bioma_principal=fix_text(row.get("bioma_principal", "")),
+                    habitat_afetado_pct=parse_float(row.get("habitat_afetado_pct", "0")),
+                    latitude=float(latitude),
+                    longitude=float(longitude),
+                    estado=canonical_state_name(row.get("estado", "")),
+                    ano=ano,
+                    mes=mes,
+                    ano_mes=f"{ano:04d}-{mes:02d}",
                 )
             )
 

@@ -61,6 +61,80 @@ export interface FireMapItem {
   risco: 'baixo' | 'medio' | 'alto';
 }
 
+export interface FirePointItem {
+  id: number;
+  data_hora: string;
+  satelite: string;
+  estado: string;
+  municipio: string;
+  bioma: string;
+  risco_fogo: number;
+  frp: number;
+  latitude: number;
+  longitude: number;
+  ano_mes: string;
+}
+
+export interface FaunaOccurrenceItem {
+  id: number;
+  nome_cientifico: string;
+  nome_popular: string;
+  grupo: string;
+  status_iucn: string;
+  bioma: string;
+  bioma_principal: string;
+  habitat_afetado_pct: number;
+  latitude: number;
+  longitude: number;
+  estado: string;
+  ano: number;
+  mes: number;
+  ano_mes: string;
+}
+
+export interface FaunaFilterOptions {
+  estados: string[];
+  biomas: string[];
+  grupos: string[];
+  status_iucn: string[];
+}
+
+export interface FaunaTimelineItem {
+  periodo: string;
+  ocorrencias: number;
+}
+
+export interface FaunaGroupDistributionItem {
+  grupo: string;
+  ocorrencias: number;
+  media_habitat_afetado: number;
+}
+
+export interface FaunaStateDistributionItem {
+  regiao: string;
+  ocorrencias: number;
+}
+
+export interface FaunaBiodiversitySummary {
+  total_ocorrencias: number;
+  total_especies: number;
+  media_habitat_afetado: number;
+  por_status_iucn: Record<string, number>;
+}
+
+export interface FaunaSpeciesItem {
+  nome_cientifico: string;
+  nome_popular: string;
+  grupo: string;
+  status: string;
+  bioma: string;
+  percentualAfetado: number;
+  location: {
+    lat: number;
+    lng: number;
+  };
+}
+
 export interface FireReportCreatePayload {
   location: string;
   description: string;

@@ -99,7 +99,34 @@ def sync_foco_dataset(db: Session) -> None:
                 region.longitude = longitude
 
         upsert_fire_event(db, region.id, record)
-        upsert_risk_snapshot(db, region.id, record, support_index, state_risk_lookup)
+
+        score = hybrid_score(
+            AggregateRiskInput(
+                quantidade_focos=record.quantidade_focos,
+                risco_fogo_mediano=record.risco_fogo_mediano,
+                frp_mediano=record.frp_mediano,
+            ),
+            record.estado,
+            record.ano,
+            record.mes,
+            support_index,
+            state_risk_lookup,
+        )
+        risco = classify_risk(score)
+
+        tomorrow_score, tomorrow_risk = state_risk_lookup.get(normalize_key(record.estado), (score, risco))
+        tendencia = forecast_tendency(score, tomorrow_score)
+
+        upsert_risk_snapshot(
+            db,
+            region.id,
+            record,
+            score,
+            risco,
+            tomorrow_score,
+            tomorrow_risk,
+            tendencia,
+        )
 
     db.commit()
 

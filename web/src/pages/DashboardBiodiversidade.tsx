@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ScatterChart,
   Scatter,
@@ -16,73 +16,270 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FilterSidebar, { FilterPayload } from '@/components/FilterSidebar';
 import { MockBrazilMap } from '@/components/Map';
-import {
-  getCriticalSpecies,
-  getBiomeDistribution,
-  getFireHotspots,
-  SpeciesData,
-} from '@/services/mockData';
 import { exportMockCsv, exportMockPdf } from '@/lib/exportUtils';
+import {
+  fetchFaunaBiodiversitySummary,
+  fetchFaunaSpecies,
+  fetchFirePoints,
+} from '@/services/analyticsApi';
+import { getApiErrorMessage } from '@/services/apiClient';
+import type { FaunaSpeciesItem, FirePointItem } from '@/types/api';
+
+const biomeColorPalette: Record<string, string> = {
+  Cerrado: '#F0AD4E',
+  Amazonia: '#5CB85C',
+  'Mata Atlantica': '#7CB342',
+  Caatinga: '#D4A520',
+  Pantanal: '#00BCD4',
+  Pampa: '#5BC0DE',
+};
+
+const normalizeBiomeName = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (l) => l.toUpperCase());
+
+const normalizeState = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+
+const ensureArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
+const PAGE_SIZE = 1000;
+const AMAZ_CERRADO_STATES = new Set([
+  'ACRE',
+  'AMAPA',
+  'AMAZONAS',
+  'BAHIA',
+  'DISTRITO FEDERAL',
+  'GOIAS',
+  'MARANHAO',
+  'MATO GROSSO',
+  'MATO GROSSO DO SUL',
+  'MINAS GERAIS',
+  'PARA',
+  'PARANA',
+  'PIAUI',
+  'RONDONIA',
+  'RORAIMA',
+  'SAO PAULO',
+  'TOCANTINS',
+]);
+
+const isInAmazCerrado = (stateName: string) => AMAZ_CERRADO_STATES.has(normalizeState(stateName));
 
 export default function DashboardBiodiversidade() {
-  const criticalSpecies = getCriticalSpecies();
-  const biomeData = getBiomeDistribution();
-  const fireHotspots = getFireHotspots();
-  const [selectedSpecies, setSelectedSpecies] = useState<SpeciesData | null>(null);
+  const [criticalSpecies, setCriticalSpecies] = useState<FaunaSpeciesItem[]>([]);
+  const [summary, setSummary] = useState({
+    total_ocorrencias: 0,
+    total_especies: 0,
+    media_habitat_afetado: 0,
+    por_status_iucn: {} as Record<string, number>,
+  });
+  const [firePoints, setFirePoints] = useState<FirePointItem[]>([]);
+  const [selectedSpecies, setSelectedSpecies] = useState<FaunaSpeciesItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [analysisMode, setAnalysisMode] = useState<'animal' | 'tipo'>('animal');
   const [selectedGroup, setSelectedGroup] = useState<string>('Todos');
   const [selectedAnimal, setSelectedAnimal] = useState<string>('Todos');
+  const [loadError, setLoadError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      setLoadError('');
+      try {
+        const [speciesPayload, summaryPayload] = await Promise.all([
+          fetchFaunaSpecies(),
+          fetchFaunaBiodiversitySummary(),
+        ]);
+
+        const safeSpecies = ensureArray<FaunaSpeciesItem>(speciesPayload);
+        const safeSummary = {
+          total_ocorrencias:
+            typeof (summaryPayload as { total_ocorrencias?: unknown })?.total_ocorrencias === 'number'
+              ? (summaryPayload as { total_ocorrencias: number }).total_ocorrencias
+              : 0,
+          total_especies:
+            typeof (summaryPayload as { total_especies?: unknown })?.total_especies === 'number'
+              ? (summaryPayload as { total_especies: number }).total_especies
+              : 0,
+          media_habitat_afetado:
+            typeof (summaryPayload as { media_habitat_afetado?: unknown })?.media_habitat_afetado === 'number'
+              ? (summaryPayload as { media_habitat_afetado: number }).media_habitat_afetado
+              : 0,
+          por_status_iucn:
+            typeof (summaryPayload as { por_status_iucn?: unknown })?.por_status_iucn === 'object' &&
+            (summaryPayload as { por_status_iucn?: unknown }).por_status_iucn !== null
+              ? ((summaryPayload as { por_status_iucn: Record<string, number> }).por_status_iucn || {})
+              : {},
+        };
+
+        setCriticalSpecies(safeSpecies);
+        setSummary(safeSummary);
+      } catch (error) {
+        setCriticalSpecies([]);
+        setSummary({
+          total_ocorrencias: 0,
+          total_especies: 0,
+          media_habitat_afetado: 0,
+          por_status_iucn: {},
+        });
+        setLoadError(getApiErrorMessage(error));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadData();
+  }, []);
+
+  useEffect(() => {
+    const loadFirePoints = async () => {
+      try {
+        const all: FirePointItem[] = [];
+        let offset = 0;
+        let hasMore = true;
+
+        while (hasMore) {
+          const payload = await fetchFirePoints({ limit: PAGE_SIZE, offset });
+          const page = ensureArray<FirePointItem>(payload);
+          all.push(...page.filter((point) => isInAmazCerrado(point.estado)));
+          hasMore = page.length === PAGE_SIZE;
+          if (hasMore) {
+            offset += PAGE_SIZE;
+          }
+        }
+
+        setFirePoints(all);
+      } catch {
+        setFirePoints([]);
+      }
+    };
+
+    void loadFirePoints();
+  }, []);
+
+  const fireMapPoints = useMemo(() => {
+    return firePoints.map((point) => ({
+      lat: point.latitude,
+      lng: point.longitude,
+      intensity: Math.max(10, Math.min(100, Math.round(point.risco_fogo))),
+      label: `${point.municipio} - ${point.estado}`,
+    }));
+  }, [firePoints]);
 
   const availableGroups = ['Todos', ...new Set(criticalSpecies.map((species) => species.grupo))];
-  const availableAnimals = ['Todos', ...criticalSpecies.map((species) => species.nomepopular)];
+  const availableAnimals = ['Todos', ...criticalSpecies.map((species) => species.nome_popular)];
 
-  const filteredSpecies = criticalSpecies.filter((species) => {
+  const filteredSpecies = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    const groupMatches = selectedGroup === 'Todos' || species.grupo === selectedGroup;
-    const animalMatches = selectedAnimal === 'Todos' || species.nomepopular === selectedAnimal;
-    const modeMatches =
-      analysisMode === 'animal' ? animalMatches : groupMatches;
 
-    return (
-      modeMatches &&
-      (
-        species.nomepopular.toLowerCase().includes(term) ||
-        species.nomecientifico.toLowerCase().includes(term) ||
-        species.bioma.toLowerCase().includes(term)
-      )
-    );
-  }).filter((species) => {
-    if (!searchTerm.trim()) {
-      return true;
-    }
-    const term = searchTerm.trim().toLowerCase();
-    return (
-      species.nomepopular.toLowerCase().includes(term) ||
-      species.nomecientifico.toLowerCase().includes(term) ||
-      species.bioma.toLowerCase().includes(term) ||
-      species.grupo.toLowerCase().includes(term)
-    );
-  });
+    return criticalSpecies.filter((species) => {
+      const groupMatches = selectedGroup === 'Todos' || species.grupo === selectedGroup;
+      const animalMatches = selectedAnimal === 'Todos' || species.nome_popular === selectedAnimal;
+      const modeMatches = analysisMode === 'animal' ? animalMatches : groupMatches;
+
+      if (!modeMatches) {
+        return false;
+      }
+
+      if (!term) {
+        return true;
+      }
+
+      return (
+        species.nome_popular.toLowerCase().includes(term) ||
+        species.nome_cientifico.toLowerCase().includes(term) ||
+        species.bioma.toLowerCase().includes(term) ||
+        species.grupo.toLowerCase().includes(term)
+      );
+    });
+  }, [analysisMode, criticalSpecies, searchTerm, selectedAnimal, selectedGroup]);
+
+  const faunaMapPoints = useMemo(() => {
+    return filteredSpecies.map((species) => ({
+      lat: species.location.lat,
+      lng: species.location.lng,
+      label: `${species.nome_popular} (${species.nome_cientifico})`,
+    }));
+  }, [filteredSpecies]);
 
   const selectedAnimalData =
     selectedAnimal === 'Todos'
       ? null
-      : criticalSpecies.find((species) => species.nomepopular === selectedAnimal) || null;
+      : criticalSpecies.find((species) => species.nome_popular === selectedAnimal) || null;
 
-  const groupedImpactData = availableGroups
-    .filter((group) => group !== 'Todos')
-    .map((group) => {
-      const speciesInGroup = criticalSpecies.filter((species) => species.grupo === group);
-      const avgImpact =
-        speciesInGroup.reduce((acc, species) => acc + species.percentualAfetado, 0) /
-        speciesInGroup.length;
+  const groupedImpactData = useMemo(() => {
+    return availableGroups
+      .filter((group) => group !== 'Todos')
+      .map((group) => {
+        const speciesInGroup = filteredSpecies.filter((species) => species.grupo === group);
+        const avgImpact =
+          speciesInGroup.length > 0
+            ? speciesInGroup.reduce((acc, species) => acc + species.percentualAfetado, 0) / speciesInGroup.length
+            : 0;
+        return {
+          grupo: group,
+          mediaImpacto: Number(avgImpact.toFixed(1)),
+          quantidade: speciesInGroup.length,
+        };
+      })
+      .filter((item) => item.quantidade > 0);
+  }, [availableGroups, filteredSpecies]);
+
+  const biomeData = useMemo(() => {
+    const grouped = filteredSpecies.reduce<Record<string, number>>((acc, species) => {
+      const key = normalizeBiomeName(species.bioma);
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+
+    const total = Object.values(grouped).reduce((acc, value) => acc + value, 0);
+    return Object.entries(grouped).map(([nome, count]) => ({
+      nome,
+      percentual: total > 0 ? Number(((count / total) * 100).toFixed(1)) : 0,
+      cor: biomeColorPalette[nome] || '#64748b',
+      count,
+    }));
+  }, [filteredSpecies]);
+
+  const biomeImpactData = useMemo(() => {
+    return biomeData.map((biome) => {
+      const speciesByBiome = filteredSpecies.filter((species) => normalizeBiomeName(species.bioma) === biome.nome);
+      const ameaçadas = speciesByBiome.filter((species) => ['CR', 'EN', 'VU'].includes(species.status)).length;
+      const mediaHabitatAfetado =
+        speciesByBiome.length > 0
+          ? speciesByBiome.reduce((acc, species) => acc + species.percentualAfetado, 0) / speciesByBiome.length
+          : 0;
+
       return {
-        grupo: group,
-        mediaImpacto: Number(avgImpact.toFixed(1)),
-        quantidade: speciesInGroup.length,
+        nome: biome.nome,
+        areaQueimada: Number(mediaHabitatAfetado.toFixed(1)),
+        especiesAmeacadas: ameaçadas,
+        especiesTotais: speciesByBiome.length,
       };
     });
+  }, [biomeData, filteredSpecies]);
+
+  const iucnData = useMemo(() => {
+    const statuses = ['LC', 'NT', 'VU', 'EN', 'CR'];
+
+    return biomeData.map((biome) => {
+      const speciesByBiome = filteredSpecies.filter((species) => normalizeBiomeName(species.bioma) === biome.nome);
+      const row: Record<string, string | number> = { bioma: biome.nome };
+      statuses.forEach((status) => {
+        row[status] = speciesByBiome.filter((species) => species.status === status).length;
+      });
+      return row;
+    });
+  }, [biomeData, filteredSpecies]);
 
   const totalSpecies = filteredSpecies.length;
   const avgAffectedHabitat =
@@ -94,29 +291,7 @@ export default function DashboardBiodiversidade() {
           ).toFixed(1)
         )
       : 0;
-  const criticalCount = filteredSpecies.filter((species) =>
-    ['EN', 'CR', 'VU'].includes(species.status)
-  ).length;
-
-  // Biome impact data for scatter chart
-  const biomeImpactData = [
-    { nome: 'Cerrado', areaQueimada: 1250, especiesAmeacadas: 45, especiesTotais: 120 },
-    { nome: 'Amazônia', areaQueimada: 980, especiesAmeacadas: 38, especiesTotais: 250 },
-    { nome: 'Caatinga', areaQueimada: 750, especiesAmeacadas: 28, especiesTotais: 85 },
-    { nome: 'Mata Atlântica', areaQueimada: 620, especiesAmeacadas: 32, especiesTotais: 95 },
-    { nome: 'Pantanal', areaQueimada: 380, especiesAmeacadas: 18, especiesTotais: 65 },
-    { nome: 'Pampa', areaQueimada: 240, especiesAmeacadas: 12, especiesTotais: 45 },
-  ];
-
-  // IUCN Status distribution
-  const iucnData = [
-    { bioma: 'Cerrado', LC: 45, NT: 28, VU: 32, EN: 12, CR: 3 },
-    { bioma: 'Amazônia', LC: 65, NT: 48, VU: 55, EN: 25, CR: 7 },
-    { bioma: 'Caatinga', LC: 25, NT: 18, VU: 20, EN: 10, CR: 2 },
-    { bioma: 'Mata Atlântica', LC: 35, NT: 22, VU: 28, EN: 15, CR: 5 },
-    { bioma: 'Pantanal', LC: 20, NT: 12, VU: 15, EN: 8, CR: 2 },
-    { bioma: 'Pampa', LC: 15, NT: 8, VU: 10, EN: 5, CR: 1 },
-  ];
+  const criticalCount = filteredSpecies.filter((species) => ['EN', 'CR', 'VU'].includes(species.status)).length;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -130,8 +305,6 @@ export default function DashboardBiodiversidade() {
         return '#FF6B6B';
       case 'CR':
         return '#8B0000';
-      case 'EX':
-        return '#000000';
       default:
         return '#CCCCCC';
     }
@@ -149,8 +322,6 @@ export default function DashboardBiodiversidade() {
         return 'Em Perigo';
       case 'CR':
         return 'Criticamente em Perigo';
-      case 'EX':
-        return 'Extinta';
       default:
         return status;
     }
@@ -172,21 +343,22 @@ export default function DashboardBiodiversidade() {
         <FilterSidebar onExportPdf={handleExportPdf} onExportCsv={handleExportCsv} />
 
         <main className="flex-1 p-8">
-          {/* Page Header */}
           <h1 className="font-display text-4xl font-bold text-guarawatch-primary mb-2">
             Impacto das Queimadas na Biodiversidade
           </h1>
           <p className="text-guarawatch-muted mb-8">
-            Análise do cruzamento entre áreas afetadas por queimadas e espécies impactadas,
-            com leitura por animal e por tipo taxonômico.
+            Painel baseado em dados reais de fauna com leitura por grupo taxonômico, espécie e status IUCN.
           </p>
+
+          {loading && <p className="text-sm text-guarawatch-muted mb-4">Carregando dados reais...</p>}
+          {loadError && (
+            <p className="text-sm text-amber-700 mb-4">Não foi possível carregar a API ({loadError}).</p>
+          )}
 
           <div className="bg-white rounded-lg p-6 shadow-sm mb-8">
             <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div className="space-y-3">
-                <h2 className="font-heading text-lg font-semibold text-guarawatch-primary">
-                  Modo de análise
-                </h2>
+                <h2 className="font-heading text-lg font-semibold text-guarawatch-primary">Modo de análise</h2>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setAnalysisMode('animal')}
@@ -213,9 +385,7 @@ export default function DashboardBiodiversidade() {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-semibold text-guarawatch-muted mb-1">
-                    Tipo taxonômico
-                  </label>
+                  <label className="block text-xs font-semibold text-guarawatch-muted mb-1">Tipo taxonômico</label>
                   <select
                     value={selectedGroup}
                     onChange={(event) => setSelectedGroup(event.target.value)}
@@ -229,9 +399,7 @@ export default function DashboardBiodiversidade() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-guarawatch-muted mb-1">
-                    Animal específico
-                  </label>
+                  <label className="block text-xs font-semibold text-guarawatch-muted mb-1">Animal específico</label>
                   <select
                     value={selectedAnimal}
                     onChange={(event) => setSelectedAnimal(event.target.value)}
@@ -265,16 +433,16 @@ export default function DashboardBiodiversidade() {
             {selectedAnimalData && analysisMode === 'animal' && (
               <div className="mt-6 rounded-lg bg-slate-50 p-4 border border-slate-200">
                 <h3 className="font-heading text-base font-semibold text-guarawatch-primary mb-2">
-                  Detalhe do animal selecionado: {selectedAnimalData.nomepopular}
+                  Detalhe do animal selecionado: {selectedAnimalData.nome_popular}
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-700">
                   <div>
-                    <p className="font-semibold">Habitat</p>
-                    <p>{selectedAnimalData.habitat || 'Sem dado disponível.'}</p>
+                    <p className="font-semibold">Nome científico</p>
+                    <p>{selectedAnimalData.nome_cientifico}</p>
                   </div>
                   <div>
-                    <p className="font-semibold">Alimentação</p>
-                    <p>{selectedAnimalData.alimentacao?.join(', ') || 'Sem dado disponível.'}</p>
+                    <p className="font-semibold">Status IUCN</p>
+                    <p>{getStatusLabel(selectedAnimalData.status)}</p>
                   </div>
                 </div>
               </div>
@@ -286,18 +454,15 @@ export default function DashboardBiodiversidade() {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <h2 className="font-heading text-lg font-semibold text-guarawatch-primary">
-                    Mapa do Brasil com incêndios e espécie selecionada
+                    Mapa real do Brasil com incêndios e espécie selecionada
                   </h2>
                   <p className="text-sm text-guarawatch-muted">
-                    Busque por uma espécie e visualize sua localização com a sobreposição de áreas de incêndio.
+                    Pontos de espécies usam coordenadas reais do CSV. Camada de incêndio plota foco a foco no recorte nacional.
                   </p>
                 </div>
 
                 <div className="w-full sm:w-80">
-                  <label
-                    className="block text-sm font-medium text-guarawatch-muted mb-2"
-                    htmlFor="species-search"
-                  >
+                  <label className="block text-sm font-medium text-guarawatch-muted mb-2" htmlFor="species-search">
                     Buscar por espécie
                   </label>
                   <input
@@ -305,7 +470,7 @@ export default function DashboardBiodiversidade() {
                     type="text"
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Onça-pintada, Lobo-guará, Arara-azul..."
+                    placeholder="Onça-pintada"
                     className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-guarawatch-text shadow-sm focus:border-guarawatch-primary focus:outline-none"
                   />
                 </div>
@@ -314,13 +479,14 @@ export default function DashboardBiodiversidade() {
               <div className="h-[520px] w-full rounded-xl overflow-hidden border border-gray-200">
                 <MockBrazilMap
                   showFire
-                  fireHotspots={fireHotspots}
+                  firePoints={fireMapPoints}
+                  faunaPoints={faunaMapPoints}
                   highlight={
                     selectedSpecies?.location
                       ? {
                           lat: selectedSpecies.location.lat,
                           lng: selectedSpecies.location.lng,
-                          label: selectedSpecies.nomepopular,
+                          label: selectedSpecies.nome_popular,
                         }
                       : null
                   }
@@ -330,13 +496,11 @@ export default function DashboardBiodiversidade() {
               <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
                 {selectedSpecies ? (
                   <span>
-                    <strong>{selectedSpecies.nomepopular}</strong> ({selectedSpecies.nomecientifico}) localizado no bioma{' '}
-                    <strong>{selectedSpecies.bioma}</strong>. O mapa mostra a área de incêndio e o ponto de habitat estimado.
+                    <strong>{selectedSpecies.nome_popular}</strong> ({selectedSpecies.nome_cientifico}) no bioma{' '}
+                    <strong>{selectedSpecies.bioma}</strong>.
                   </span>
                 ) : (
-                  <span>
-                    Clique numa espécie na tabela abaixo ou use a busca para visualizar a localização no mapa.
-                  </span>
+                  <span>Clique numa espécie na tabela abaixo ou use a busca para visualizar no mapa.</span>
                 )}
               </div>
             </div>
@@ -359,32 +523,25 @@ export default function DashboardBiodiversidade() {
             </ResponsiveContainer>
           </div>
 
-          {/* Biome Impact Chart */}
           <div className="bg-white rounded-lg p-6 shadow-sm mb-8">
             <h2 className="font-heading text-lg font-semibold text-guarawatch-primary mb-4">
-              Espécies Afetadas por Bioma
+              Espécies e habitat afetado por Bioma
             </h2>
             <ResponsiveContainer width="100%" height={300}>
               <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="areaQueimada" name="Área Queimada (1000 ha)" />
-                <YAxis dataKey="especiesAmeacadas" name="Espécies Ameaçadas" />
+                <XAxis dataKey="areaQueimada" name="Habitat afetado médio (%)" />
+                <YAxis dataKey="especiesAmeacadas" name="Espécies ameaçadas" />
                 <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-                <Scatter
-                  name="Biomas"
-                  data={biomeImpactData}
-                  fill="#D9534F"
-                  shape="circle"
-                >
+                <Scatter name="Biomas" data={biomeImpactData} fill="#D9534F" shape="circle">
                   {biomeImpactData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={biomeData[index]?.cor} />
+                    <Cell key={`cell-${index}`} fill={biomeData[index]?.cor || '#64748b'} />
                   ))}
                 </Scatter>
               </ScatterChart>
             </ResponsiveContainer>
           </div>
 
-          {/* IUCN Status Distribution */}
           <div className="bg-white rounded-lg p-6 shadow-sm mb-8">
             <h2 className="font-heading text-lg font-semibold text-guarawatch-primary mb-4">
               Distribuição por Status de Conservação (IUCN)
@@ -405,48 +562,31 @@ export default function DashboardBiodiversidade() {
             </ResponsiveContainer>
           </div>
 
-          {/* Critical Species Table */}
           <div className="bg-white rounded-lg p-6 shadow-sm">
             <h2 className="font-heading text-lg font-semibold text-guarawatch-primary mb-4">
-              Espécies Criticamente Afetadas
+              Espécies Registradas no Dataset
             </h2>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="border-b-2 border-guarawatch-primary">
                   <tr>
-                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">
-                      Nome Científico
-                    </th>
-                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">
-                      Nome Popular
-                    </th>
-                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">
-                      Grupo
-                    </th>
-                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">
-                      Status IUCN
-                    </th>
-                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">
-                      Bioma
-                    </th>
-                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">
-                      % Habitat Afetado
-                    </th>
+                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">Nome Científico</th>
+                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">Nome Popular</th>
+                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">Grupo</th>
+                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">Status IUCN</th>
+                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">Bioma</th>
+                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">% Habitat Afetado</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredSpecies.map((species, idx) => (
                     <tr
-                      key={idx}
+                      key={`${species.nome_cientifico}-${idx}`}
                       className="border-b border-gray-200 hover:bg-guarawatch-bg transition-colors cursor-pointer"
                       onClick={() => setSelectedSpecies(species)}
                     >
-                      <td className="py-3 px-4 font-mono text-sm text-guarawatch-muted italic">
-                        {species.nomecientifico}
-                      </td>
-                      <td className="py-3 px-4 font-heading font-semibold text-guarawatch-primary">
-                        {species.nomepopular}
-                      </td>
+                      <td className="py-3 px-4 font-mono text-sm text-guarawatch-muted italic">{species.nome_cientifico}</td>
+                      <td className="py-3 px-4 font-heading font-semibold text-guarawatch-primary">{species.nome_popular}</td>
                       <td className="py-3 px-4 text-guarawatch-text">{species.grupo}</td>
                       <td className="py-3 px-4">
                         <span
@@ -458,17 +598,7 @@ export default function DashboardBiodiversidade() {
                       </td>
                       <td className="py-3 px-4 text-guarawatch-muted">{species.bioma}</td>
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-guarawatch-danger"
-                              style={{ width: `${species.percentualAfetado}%` }}
-                            />
-                          </div>
-                          <span className="font-mono text-sm">
-                            {species.percentualAfetado}%
-                          </span>
-                        </div>
+                        <span className="font-mono text-sm">{species.percentualAfetado}%</span>
                       </td>
                     </tr>
                   ))}
@@ -478,23 +608,18 @@ export default function DashboardBiodiversidade() {
 
             {filteredSpecies.length === 0 && (
               <p className="text-sm text-guarawatch-muted mt-4">
-                Nenhuma espécie encontrada para o recorte atual. Ajuste o tipo, animal ou termo de busca.
+                Nenhuma espécie encontrada para o recorte atual.
               </p>
             )}
           </div>
 
-          {/* Species Detail Modal */}
           {selectedSpecies && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
               <div className="bg-white rounded-lg max-w-2xl w-full max-h-96 overflow-y-auto p-6">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="font-heading text-2xl font-semibold text-guarawatch-primary">
-                      {selectedSpecies.nomepopular}
-                    </h3>
-                    <p className="text-sm text-guarawatch-muted italic">
-                      {selectedSpecies.nomecientifico}
-                    </p>
+                    <h3 className="font-heading text-2xl font-semibold text-guarawatch-primary">{selectedSpecies.nome_popular}</h3>
+                    <p className="text-sm text-guarawatch-muted italic">{selectedSpecies.nome_cientifico}</p>
                   </div>
                   <button
                     onClick={() => setSelectedSpecies(null)}
@@ -507,9 +632,7 @@ export default function DashboardBiodiversidade() {
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
                     <p className="text-xs text-guarawatch-muted mb-1">Grupo Taxonômico</p>
-                    <p className="font-heading font-semibold text-guarawatch-text">
-                      {selectedSpecies.grupo}
-                    </p>
+                    <p className="font-heading font-semibold text-guarawatch-text">{selectedSpecies.grupo}</p>
                   </div>
                   <div>
                     <p className="text-xs text-guarawatch-muted mb-1">Status IUCN</p>
@@ -522,40 +645,34 @@ export default function DashboardBiodiversidade() {
                   </div>
                   <div>
                     <p className="text-xs text-guarawatch-muted mb-1">Bioma</p>
-                    <p className="font-heading font-semibold text-guarawatch-text">
-                      {selectedSpecies.bioma}
-                    </p>
+                    <p className="font-heading font-semibold text-guarawatch-text">{selectedSpecies.bioma}</p>
                   </div>
                   <div>
                     <p className="text-xs text-guarawatch-muted mb-1">Habitat Afetado</p>
-                    <p className="font-mono font-semibold text-guarawatch-danger">
-                      {selectedSpecies.percentualAfetado}%
-                    </p>
+                    <p className="font-mono font-semibold text-guarawatch-danger">{selectedSpecies.percentualAfetado}%</p>
                   </div>
                 </div>
 
                 <p className="text-sm text-guarawatch-muted">
-                  Esta espécie tem {selectedSpecies.percentualAfetado}% de seu habitat afetado
-                  pelas queimadas na região do {selectedSpecies.bioma}.
+                  Esta espécie tem {selectedSpecies.percentualAfetado}% de ocorrência fora do bioma principal no dataset atual.
                 </p>
 
                 <div className="mt-4 grid grid-cols-1 gap-3 text-sm text-slate-700">
                   <div>
-                    <p className="font-semibold">Habitat</p>
-                    <p>{selectedSpecies.habitat || 'Sem dados detalhados de habitat.'}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold">Alimentação</p>
-                    <p>{selectedSpecies.alimentacao?.join(', ') || 'Sem dados de alimentação.'}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold">Ameaças principais</p>
-                    <p>{selectedSpecies.ameacas?.join(', ') || 'Sem dados de ameaças.'}</p>
+                    <p className="font-semibold">Coordenada média da espécie</p>
+                    <p>
+                      Latitude: {selectedSpecies.location.lat}, Longitude: {selectedSpecies.location.lng}
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
           )}
+
+          <div className="mt-4 text-xs text-slate-500">
+            Totais globais carregados da API: {summary.total_especies} espécie(s), {summary.total_ocorrencias} ocorrência(s),
+            habitat afetado médio de {summary.media_habitat_afetado}%.
+          </div>
         </main>
       </div>
 

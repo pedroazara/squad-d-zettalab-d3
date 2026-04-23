@@ -42,6 +42,7 @@ api/
 │  ├─ regions.py
 │  ├─ risk.py
 │  ├─ fires.py
+│  ├─ fauna.py
 │  ├─ climate.py
 │  └─ reports.py
 ├─ services/
@@ -209,8 +210,11 @@ Regras de segurança no update:
 
 - `GET /fires?ano_mes=YYYY-MM&estado=&municipio=&limit=100&offset=0`
 - `GET /fires/{fire_id}`
-- `GET /fires/points?ano_mes=YYYY-MM&estado=&municipio=&limit=1000&offset=0`
-- `GET /fires/points/{point_id}`
+- `GET /fires/points?ano_mes=YYYY-MM&estado=&municipio=&limit=1000&offset=0` (publico)
+- `GET /fires/points/{point_id}` (publico)
+
+Origem dos pontos georreferenciados: `data/interim/focos/focos_limpos_detalhados.csv`
+com fallback para `data/processed/focos/focos_limpos_detalhados.csv`.
 
 ### 7.7 Clima
 
@@ -223,6 +227,18 @@ Regras de segurança no update:
 - `GET /reports/fire?limit=100&offset=0`
 - `GET /reports/fire/{report_id}`
 - `PATCH /reports/fire/{report_id}/status` (requer `reports.review`)
+
+### 7.9 Fauna (endpoints publicos)
+
+- `GET /fauna/filters`
+- `GET /fauna/occurrences?estado=&bioma=&grupo=&status_iucn=&ano=&mes=&search=&limit=500&offset=0`
+- `GET /fauna/timeline?granularity=anual|mensal&estado=&bioma=&grupo=`
+- `GET /fauna/distribution/groups?estado=&bioma=`
+- `GET /fauna/distribution/states?bioma=&grupo=`
+- `GET /fauna/biodiversity/summary?estado=&bioma=&grupo=`
+- `GET /fauna/biodiversity/species?estado=&bioma=&grupo=&status_iucn=`
+
+Origem dos dados: `data/fauna_cerrado/fauna_cerrado_2019.csv`.
 
 ## 8. Contratos essenciais
 

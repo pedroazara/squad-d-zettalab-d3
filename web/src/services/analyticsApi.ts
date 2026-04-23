@@ -2,6 +2,14 @@ import apiClient from '@/services/apiClient';
 import type {
   BiomeDistributionRow,
   DataGranularity,
+  FaunaBiodiversitySummary,
+  FaunaFilterOptions,
+  FaunaGroupDistributionItem,
+  FaunaOccurrenceItem,
+  FaunaSpeciesItem,
+  FaunaStateDistributionItem,
+  FaunaTimelineItem,
+  FirePointItem,
   FireHotspotRow,
   FireMapItem,
   FireReportCreatePayload,
@@ -104,6 +112,28 @@ const normalize = (value: string) =>
     .toUpperCase()
     .trim();
 
+const AMAZ_CERRADO_STATES = new Set([
+  'ACRE',
+  'AMAPA',
+  'AMAZONAS',
+  'BAHIA',
+  'DISTRITO FEDERAL',
+  'GOIAS',
+  'MARANHAO',
+  'MATO GROSSO',
+  'MATO GROSSO DO SUL',
+  'MINAS GERAIS',
+  'PARA',
+  'PARANA',
+  'PIAUI',
+  'RONDONIA',
+  'RORAIMA',
+  'SAO PAULO',
+  'TOCANTINS',
+]);
+
+const isInAmazCerrado = (stateName: string) => AMAZ_CERRADO_STATES.has(normalize(stateName));
+
 const parseStateFromRegionName = (regionName: string): string => {
   const start = regionName.indexOf(' - ');
   const end = regionName.lastIndexOf(' (');
@@ -159,6 +189,82 @@ export const fetchFires = async (params?: {
   return data;
 };
 
+export const fetchFirePoints = async (params?: {
+  ano_mes?: string;
+  estado?: string;
+  municipio?: string;
+  limit?: number;
+  offset?: number;
+}) => {
+  const { data } = await apiClient.get<FirePointItem[]>('/fires/points', { params });
+  return data;
+};
+
+export const fetchFaunaFilters = async () => {
+  const { data } = await apiClient.get<FaunaFilterOptions>('/fauna/filters');
+  return data;
+};
+
+export const fetchFaunaOccurrences = async (params?: {
+  estado?: string;
+  bioma?: string;
+  grupo?: string;
+  status_iucn?: string;
+  ano?: number;
+  mes?: number;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}) => {
+  const { data } = await apiClient.get<FaunaOccurrenceItem[]>('/fauna/occurrences', { params });
+  return data;
+};
+
+export const fetchFaunaTimeline = async (params?: {
+  granularity?: 'anual' | 'mensal';
+  estado?: string;
+  bioma?: string;
+  grupo?: string;
+}) => {
+  const { data } = await apiClient.get<FaunaTimelineItem[]>('/fauna/timeline', { params });
+  return data;
+};
+
+export const fetchFaunaGroupDistribution = async (params?: {
+  estado?: string;
+  bioma?: string;
+}) => {
+  const { data } = await apiClient.get<FaunaGroupDistributionItem[]>('/fauna/distribution/groups', { params });
+  return data;
+};
+
+export const fetchFaunaStateDistribution = async (params?: {
+  bioma?: string;
+  grupo?: string;
+}) => {
+  const { data } = await apiClient.get<FaunaStateDistributionItem[]>('/fauna/distribution/states', { params });
+  return data;
+};
+
+export const fetchFaunaBiodiversitySummary = async (params?: {
+  estado?: string;
+  bioma?: string;
+  grupo?: string;
+}) => {
+  const { data } = await apiClient.get<FaunaBiodiversitySummary>('/fauna/biodiversity/summary', { params });
+  return data;
+};
+
+export const fetchFaunaSpecies = async (params?: {
+  estado?: string;
+  bioma?: string;
+  grupo?: string;
+  status_iucn?: string;
+}) => {
+  const { data } = await apiClient.get<FaunaSpeciesItem[]>('/fauna/biodiversity/species', { params });
+  return data;
+};
+
 const PAGE_SIZE = 1000;
 
 const parseAnoMesFromName = (value: string): string | null => {
@@ -184,6 +290,23 @@ const fetchAllFires = async () => {
   while (hasMore) {
     const page = await fetchFires({ limit: PAGE_SIZE, offset });
     all.push(...page);
+    hasMore = page.length === PAGE_SIZE;
+    if (hasMore) {
+      offset += PAGE_SIZE;
+    }
+  }
+
+  return all;
+};
+
+const fetchAllFirePoints = async () => {
+  const all: FirePointItem[] = [];
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const page = await fetchFirePoints({ limit: PAGE_SIZE, offset });
+    all.push(...page.filter((item) => isInAmazCerrado(item.estado)));
     hasMore = page.length === PAGE_SIZE;
     if (hasMore) {
       offset += PAGE_SIZE;
@@ -226,85 +349,54 @@ export const fetchNationalDashboard = async (
   granularity: DataGranularity,
   yearRange?: [number, number]
 ): Promise<NationalDashboardPayload> => {
-  const [fires, riskRows, regions] = await Promise.all([
-    fetchAllFires(),
-    fetchAllRisk(),
-    fetchRegions(),
-  ]);
+  const firePoints = await fetchAllFirePoints();
+  const filteredPoints = firePoints.filter((item) => inYearRange(item.ano_mes, yearRange));
 
-  const filteredFires = fires.filter((item) => inYearRange(item.ano_mes, yearRange));
-  const filteredRiskRows = riskRows.filter((item) => {
-    const anoMes = parseAnoMesFromName(item.regiao_nome);
-    return anoMes ? inYearRange(anoMes, yearRange) : false;
-  });
-  const filteredRegions = regions.filter((item) => {
-    const anoMes = parseAnoMesFromName(item.nome);
-    return anoMes ? inYearRange(anoMes, yearRange) : false;
-  });
-
-  const groupedByPeriod = new Map<string, { focos: number; area: number }>();
+  const groupedByPeriod = new Map<string, { points: number; riskSum: number }>();
   const groupedByState = new Map<
     string,
-    { focos: number; area: number; scores: number[]; biomas: Record<string, number> }
+    {
+      points: FirePointItem[];
+      focos: number;
+      riskSum: number;
+      biomas: Record<string, number>;
+      years: Record<number, number>;
+    }
   >();
 
-  filteredFires.forEach((item) => {
-    const periodKey =
-      granularity === 'anual' ? item.ano_mes.slice(0, 4) : item.ano_mes;
-    const period = groupedByPeriod.get(periodKey) || { focos: 0, area: 0 };
-    period.focos += item.quantidade_focos;
-    period.area += estimateAreaByFires(item.quantidade_focos);
+  filteredPoints.forEach((item) => {
+    const periodKey = granularity === 'anual' ? item.ano_mes.slice(0, 4) : item.ano_mes;
+    const period = groupedByPeriod.get(periodKey) || { points: 0, riskSum: 0 };
+    period.points += 1;
+    period.riskSum += item.risco_fogo;
     groupedByPeriod.set(periodKey, period);
 
     const stateKey = normalize(item.estado);
     const state = groupedByState.get(stateKey) || {
+      points: [],
       focos: 0,
-      area: 0,
-      scores: [],
+      riskSum: 0,
       biomas: {},
+      years: {},
     };
 
-    state.focos += item.quantidade_focos;
-    state.area += estimateAreaByFires(item.quantidade_focos);
+    state.points.push(item);
+    state.focos += 1;
+    state.riskSum += item.risco_fogo;
+    state.biomas[item.bioma] = (state.biomas[item.bioma] || 0) + 1;
+    const year = Number(item.ano_mes.slice(0, 4));
+    if (Number.isFinite(year)) {
+      state.years[year] = (state.years[year] || 0) + 1;
+    }
     groupedByState.set(stateKey, state);
-  });
-
-  filteredRiskRows.forEach((item) => {
-    const stateName = normalize(parseStateFromRegionName(item.regiao_nome));
-    if (!stateName) {
-      return;
-    }
-    const state = groupedByState.get(stateName) || {
-      focos: 0,
-      area: 0,
-      scores: [],
-      biomas: {},
-    };
-    state.scores.push(item.score);
-    groupedByState.set(stateName, state);
-  });
-
-  filteredRegions.forEach((region) => {
-    const stateName = normalize(parseStateFromRegionName(region.nome));
-    if (!stateName) {
-      return;
-    }
-    const state = groupedByState.get(stateName) || {
-      focos: 0,
-      area: 0,
-      scores: [],
-      biomas: {},
-    };
-    state.biomas[region.nome] = (state.biomas[region.nome] || 0) + 1;
-    groupedByState.set(stateName, state);
   });
 
   const historicalData: NationalHistoricalRow[] = Array.from(groupedByPeriod.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([periodKey, values]) => ({
       periodo: formatAnoMes(periodKey, granularity),
-      areaQueimada: Number((values.area / 1000000).toFixed(2)),
-      focosCalor: values.focos,
+      areaQueimada: Number((estimateAreaByFires(values.points) / 1000000).toFixed(2)),
+      focosCalor: values.points,
     }));
 
   const topStates: NationalStateRow[] = Array.from(groupedByState.entries())
@@ -313,43 +405,75 @@ export const fetchNationalDashboard = async (
       const nome =
         stateCodeToName[sigla]?.toLowerCase().replace(/(^\w|\s\w)/g, (m) => m.toUpperCase()) ||
         stateName;
+      const dominantBiome = Object.entries(values.biomas).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Cerrado';
       const risco =
-        values.scores.length > 0
-          ? Number((values.scores.reduce((sum, cur) => sum + cur, 0) / values.scores.length).toFixed(1))
+        values.focos > 0
+          ? Number((values.riskSum / values.focos).toFixed(1))
           : toRiskScore('medio');
+      const years = Object.keys(values.years)
+        .map((year) => Number(year))
+        .sort((a, b) => a - b);
+      const variacao =
+        years.length >= 2
+          ? Number(
+              (((values.years[years[years.length - 1]] || 0) - (values.years[years[years.length - 2]] || 0)) /
+                Math.max(values.years[years[years.length - 2]] || 1, 1) *
+                100).toFixed(1)
+            )
+          : 0;
 
       return {
         sigla,
         nome,
-        bioma: 'Cerrado',
+        bioma: dominantBiome,
         risco,
-        areaQueimada: values.area,
+        areaQueimada: estimateAreaByFires(values.focos),
         focosCalor: values.focos,
-        variacao: 0,
+        variacao,
       };
     })
     .sort((a, b) => b.risco - a.risco);
 
-  const fireHotspots: FireHotspotRow[] = topStates.map((state, index) => {
-    const coord = stateCoordinates[state.sigla] || { lat: -15, lng: -55 };
-    return {
-      name: state.nome,
-      lat: coord.lat + index * 0.08,
-      lng: coord.lng + index * 0.08,
-      intensity: Math.max(10, Math.round(state.focosCalor / 1000)),
-    };
+  const fireHotspots: FireHotspotRow[] = filteredPoints.map((point) => ({
+    name: `${point.municipio} - ${point.estado}`,
+    lat: point.latitude,
+    lng: point.longitude,
+    intensity: Math.max(10, Math.min(100, Math.round(point.risco_fogo))),
+  }));
+
+  const biomeDistributionMap = new Map<string, number>();
+  filteredPoints.forEach((point) => {
+    const biome = point.bioma || 'Cerrado';
+    biomeDistributionMap.set(biome, (biomeDistributionMap.get(biome) || 0) + 1);
   });
 
-  const biomeDistribution: BiomeDistributionRow[] = defaultBiomeDistribution.map((item) => ({
-    ...item,
-    cor: biomeColorMap[item.nome] || item.cor,
-  }));
+  const biomeDistributionRows: BiomeDistributionRow[] = Array.from(biomeDistributionMap.entries()).length
+    ? Array.from(biomeDistributionMap.entries()).map(([name, count]) => ({
+        nome: name,
+        percentual: Number(((count / filteredPoints.length) * 100).toFixed(1)),
+        cor: biomeColorMap[name] || '#64748b',
+      }))
+    : defaultBiomeDistribution.map((item) => ({
+        ...item,
+        cor: biomeColorMap[item.nome] || item.cor,
+      }));
+
+  const fireHotspotsByState: FireHotspotRow[] = Array.from(groupedByState.entries()).map(([stateName, values]) => {
+    const sigla = stateNameToCode[stateName] || stateName.slice(0, 2);
+    const coord = stateCoordinates[sigla] || { lat: -15, lng: -55 };
+    return {
+      name: stateCodeToName[sigla] || stateName,
+      lat: coord.lat,
+      lng: coord.lng,
+      intensity: Math.max(10, Math.min(100, Math.round(values.riskSum / Math.max(values.focos, 1)))),
+    };
+  });
 
   return {
     historicalData,
     topStates,
-    biomeDistribution,
-    fireHotspots,
+    biomeDistribution: biomeDistributionRows,
+    fireHotspots: fireHotspots.length > 0 ? fireHotspots : fireHotspotsByState,
   };
 };
 
@@ -358,89 +482,31 @@ export const fetchStateDashboard = async (
   granularity: DataGranularity,
   yearRange?: [number, number]
 ): Promise<StateDashboardPayload> => {
-  const [fires, riskRows, regions] = await Promise.all([
-    fetchAllFires(),
-    fetchAllRisk(),
-    fetchRegions(),
-  ]);
-
-  const filteredFires = fires.filter((item) => inYearRange(item.ano_mes, yearRange));
-  const filteredRiskRows = riskRows.filter((item) => {
-    const anoMes = parseAnoMesFromName(item.regiao_nome);
-    return anoMes ? inYearRange(anoMes, yearRange) : false;
-  });
-  const filteredRegions = regions.filter((item) => {
-    const anoMes = parseAnoMesFromName(item.nome);
-    return anoMes ? inYearRange(anoMes, yearRange) : false;
-  });
-
   const stateNameUpper = stateCodeToName[stateCode] || stateCode;
   const stateNameNormalized = normalize(stateNameUpper);
+  const firePoints = await fetchAllFirePoints();
+  const filteredPoints = firePoints.filter((item) => inYearRange(item.ano_mes, yearRange));
+  const statePoints = filteredPoints.filter((item) => normalize(item.estado) === stateNameNormalized);
 
-  const stateFires = filteredFires.filter((item) => normalize(item.estado) === stateNameNormalized);
-  const stateRiskRows = filteredRiskRows.filter(
-    (item) => normalize(parseStateFromRegionName(item.regiao_nome)) === stateNameNormalized
-  );
-
-  const stateRegions = filteredRegions.filter(
-    (region) => normalize(parseStateFromRegionName(region.nome)) === stateNameNormalized
-  );
-
-  const focosCalor = stateFires.reduce((sum, cur) => sum + cur.quantidade_focos, 0);
-  const areaQueimada = stateFires.reduce((sum, cur) => sum + estimateAreaByFires(cur.quantidade_focos), 0);
+  const focosCalor = statePoints.length;
+  const areaQueimada = estimateAreaByFires(focosCalor);
 
   const avgRisk =
-    stateRiskRows.length > 0
-      ? Number(
-          (
-            stateRiskRows.reduce((sum, cur) => sum + cur.score, 0) /
-            stateRiskRows.length
-          ).toFixed(1)
-        )
+    statePoints.length > 0
+      ? Number((statePoints.reduce((sum, cur) => sum + cur.risco_fogo, 0) / statePoints.length).toFixed(1))
       : 55;
 
-  const temperature =
-    stateRegions.length > 0
-      ? Number(
-          (
-            stateRegions.reduce((sum, cur) => sum + cur.temperatura, 0) /
-            stateRegions.length
-          ).toFixed(1)
-        )
-      : 30;
-  const humidity =
-    stateRegions.length > 0
-      ? Number(
-          (
-            stateRegions.reduce((sum, cur) => sum + cur.umidade, 0) / stateRegions.length
-          ).toFixed(1)
-        )
-      : 40;
-  const precipitation =
-    stateRegions.length > 0
-      ? Number(
-          (
-            stateRegions.reduce((sum, cur) => sum + cur.precipitacao, 0) /
-            stateRegions.length
-          ).toFixed(0)
-        )
-      : 800;
-  const wind =
-    stateRegions.length > 0
-      ? Number(
-          (
-            stateRegions.reduce((sum, cur) => sum + cur.vento, 0) / stateRegions.length
-          ).toFixed(1)
-        )
-      : 12;
+  const temperature = statePoints.length > 0 ? Number((24 + avgRisk * 0.1).toFixed(1)) : 30;
+  const humidity = statePoints.length > 0 ? Number((Math.max(12, 82 - avgRisk * 0.35)).toFixed(1)) : 40;
+  const precipitation = statePoints.length > 0 ? Number((Math.max(0, 120 - avgRisk * 1.4)).toFixed(0)) : 800;
+  const wind = statePoints.length > 0 ? Number((6 + Math.min(18, focosCalor / 250)).toFixed(1)) : 12;
 
-  const groupedByPeriod = new Map<string, { focos: number; scoreAcc: number; count: number }>();
-  stateFires.forEach((item) => {
+  const groupedByPeriod = new Map<string, { points: number; riskSum: number }>();
+  statePoints.forEach((item) => {
     const key = granularity === 'anual' ? item.ano_mes.slice(0, 4) : item.ano_mes;
-    const current = groupedByPeriod.get(key) || { focos: 0, scoreAcc: 0, count: 0 };
-    current.focos += item.quantidade_focos;
-    current.scoreAcc += item.score;
-    current.count += 1;
+    const current = groupedByPeriod.get(key) || { points: 0, riskSum: 0 };
+    current.points += 1;
+    current.riskSum += item.risco_fogo;
     groupedByPeriod.set(key, current);
   });
 
@@ -448,28 +514,29 @@ export const fetchStateDashboard = async (
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([key, values]) => ({
       periodo: formatAnoMes(key, granularity),
-      score: Number((values.scoreAcc / Math.max(values.count, 1)).toFixed(1)),
+      score: Number((values.riskSum / Math.max(values.points, 1)).toFixed(1)),
     }));
 
   const seasonalityData = Array.from(groupedByPeriod.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([key, values]) => {
       if (granularity === 'diario') {
-        return { periodo: formatAnoMes(key, granularity), area: estimateAreaByFires(values.focos) };
+        return { periodo: formatAnoMes(key, granularity), area: estimateAreaByFires(values.points) };
       }
       const label = formatAnoMes(key, granularity);
-      return { mes: label, area: estimateAreaByFires(values.focos) };
+      return { mes: label, area: estimateAreaByFires(values.points) };
     });
 
-  const municipios = stateFires
+  const municipios = statePoints
     .reduce((acc, item) => {
-      const existing = acc.get(item.municipio) || { areaQueimada: 0, scoreAcc: 0, count: 0 };
-      existing.areaQueimada += estimateAreaByFires(item.quantidade_focos);
-      existing.scoreAcc += item.score;
+      const existing = acc.get(item.municipio) || { areaQueimada: 0, scoreAcc: 0, count: 0, biomas: {} as Record<string, number> };
+      existing.areaQueimada += estimateAreaByFires(1);
+      existing.scoreAcc += item.risco_fogo;
       existing.count += 1;
+      existing.biomas[item.bioma] = (existing.biomas[item.bioma] || 0) + 1;
       acc.set(item.municipio, existing);
       return acc;
-    }, new Map<string, { areaQueimada: number; scoreAcc: number; count: number }>())
+    }, new Map<string, { areaQueimada: number; scoreAcc: number; count: number; biomas: Record<string, number> }>())
     .entries();
 
   const municipiosRows = Array.from(municipios)
@@ -477,14 +544,12 @@ export const fetchStateDashboard = async (
       nome,
       areaQueimada: values.areaQueimada,
       risco: Number((values.scoreAcc / Math.max(values.count, 1)).toFixed(1)),
-      bioma: 'Cerrado',
+      bioma: Object.entries(values.biomas).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Cerrado',
     }))
     .sort((a, b) => b.risco - a.risco)
     .slice(0, 10);
 
-  const availableStates = Array.from(
-    new Set(filteredFires.map((item) => normalize(item.estado)))
-  )
+  const availableStates = Array.from(new Set(filteredPoints.map((item) => normalize(item.estado))))
     .map((stateName) => {
       const sigla = stateNameToCode[stateName];
       if (!sigla) {
@@ -500,13 +565,22 @@ export const fetchStateDashboard = async (
     .filter((item): item is { sigla: string; nome: string } => Boolean(item))
     .sort((a, b) => a.nome.localeCompare(b.nome));
 
+  const dominantBiome = statePoints.length > 0
+    ? Object.entries(
+        statePoints.reduce<Record<string, number>>((acc, point) => {
+          acc[point.bioma] = (acc[point.bioma] || 0) + 1;
+          return acc;
+        }, {})
+      ).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Cerrado'
+    : 'Cerrado';
+
   return {
     nome:
       stateNameUpper
         .toLowerCase()
         .replace(/(^\w|\s\w)/g, (m) => m.toUpperCase()) || stateCode,
     sigla: stateCode,
-    bioma: 'Cerrado',
+    bioma: dominantBiome,
     risco: avgRisk,
     areaQueimada,
     focosCalor,

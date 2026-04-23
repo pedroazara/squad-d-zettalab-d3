@@ -16,13 +16,21 @@ from services.region_service import (
 
 
 def _run_all_dataset_syncs(db: Session) -> None:
-    sync_burn_scar_dataset(db)
-    sync_pasture_risk_dataset(db)
-    sync_cross_risk_dataset(db)
-    sync_fire_points_dataset(db)
-    sync_climate_dataset(db)
-    sync_foco_dataset(db)
-    sync_state_risk_dataset(db)
+    steps = [
+        ("burn_scar", sync_burn_scar_dataset),
+        ("pasture_risk", sync_pasture_risk_dataset),
+        ("cross_risk", sync_cross_risk_dataset),
+        ("fire_points", sync_fire_points_dataset),
+        ("climate", sync_climate_dataset),
+        ("foco", sync_foco_dataset),
+        ("state_risk", sync_state_risk_dataset),
+    ]
+
+    for step_name, step_fn in steps:
+        try:
+            step_fn(db)
+        except Exception as exc:
+            raise RuntimeError(f"Falha no seed durante a etapa '{step_name}': {exc}") from exc
 
 
 def ensure_seed_data(db: Session) -> None:

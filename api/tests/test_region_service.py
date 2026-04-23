@@ -276,9 +276,17 @@ def test_sync_foco_dataset_delegates_to_repository(monkeypatch):
     monkeypatch.setattr(region_service, "load_records", lambda: records)
     monkeypatch.setattr(region_service, "load_state_risk_records", lambda: [SimpleNamespace(estado="MG", risco_geral="alto")])
     monkeypatch.setattr(region_service, "load_hybrid_support_index", lambda: hybrid_index)
+    monkeypatch.setattr(region_service, "score_for_state_risk", lambda _risk: (61.0, "medio"))
+    monkeypatch.setattr(region_service, "hybrid_score", lambda *args, **kwargs: 61.0)
     monkeypatch.setattr(region_service, "upsert_region", lambda db, record: calls.append(("region", record.municipio)) or region_object)
     monkeypatch.setattr(region_service, "upsert_fire_event", lambda db, region_id, record: calls.append(("fire", region_id, record.quantidade_focos)))
-    monkeypatch.setattr(region_service, "upsert_risk_snapshot", lambda db, region_id, record, support_index, lookup: calls.append(("risk", region_id, support_index is hybrid_index, lookup["MG"][1])))
+    monkeypatch.setattr(
+        region_service,
+        "upsert_risk_snapshot",
+        lambda db, region_id, record, score, risco, score_amanha, risco_amanha, tendencia: calls.append(
+            ("risk", region_id, score, risco, score_amanha, risco_amanha, tendencia)
+        ),
+    )
 
     region_service.sync_foco_dataset(fake_db)
 
@@ -286,6 +294,7 @@ def test_sync_foco_dataset_delegates_to_repository(monkeypatch):
     assert calls[0] == ("region", "Lavras")
     assert calls[1][0] == "fire"
     assert calls[2][0] == "risk"
+    assert calls[2][3:] == ("medio", 61.0, "medio", "estavel")
     assert calls[3][0] == "fire"
     assert calls[4][0] == "risk"
 

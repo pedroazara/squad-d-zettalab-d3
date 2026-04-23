@@ -37,15 +37,23 @@ Documentação automática em `http://localhost:8000/docs`
 - `POST /auth/login`
 - `GET /regions`
 - `GET /risk` (filtros: `region_id`, `ano_mes`; paginação: `limit`, `offset`)
-- `GET /fires` (mapa de risco agregado por municipio/mes, sem lat/long por foco; filtros: `ano_mes`, `estado`, `municipio`; paginação: `limit`, `offset`)
+- `GET /fires` (agregado por municipio/mes; filtros: `ano_mes`, `estado`, `municipio`; paginação: `limit`, `offset`)
+- `GET /fires/points` (público; pontos georreferenciados com lat/lon; filtros: `ano_mes`, `estado`, `municipio`)
+- `GET /fauna/filters` (público; estados, biomas, grupos e status IUCN)
+- `GET /fauna/occurrences` (público; ocorrências de fauna com lat/lon e filtros)
+- `GET /fauna/timeline` (público; série temporal anual/mensal)
+- `GET /fauna/distribution/groups` (público; distribuição por grupo)
+- `GET /fauna/distribution/states` (público; distribuição por estado)
+- `GET /fauna/biodiversity/summary` (público; resumo de biodiversidade)
+- `GET /fauna/biodiversity/species` (público; espécies com centroide de localização)
 - `POST /reports/fire`
 - `GET /reports/fire`
 
 ## Escopo do mapa por sprint
 
-- Sprint 1: mapa agregado usando `data/processed/focos/focos_por_municipio_mes.csv` (reproduzivel e commitavel).
-- Trade-off assumido: menor precisao espacial (sem ponto individual com latitude/longitude) em troca de estabilidade da entrega.
-- Proxima sprint: endpoint opcional de pontos detalhados com base `interim/` local, quando disponivel.
+- Mapa nacional e de ocorrências usam geometria real de estados (GeoJSON) e pontos georreferenciados.
+- Pontos de fogo são carregados de `data/interim/focos/focos_limpos_detalhados.csv` com fallback para `data/processed/focos/focos_limpos_detalhados.csv`.
+- Ocorrências de fauna são carregadas de `data/fauna_cerrado/fauna_cerrado_2019.csv`.
 
 ## Squad
 

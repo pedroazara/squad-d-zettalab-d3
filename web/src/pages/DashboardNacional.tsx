@@ -211,8 +211,16 @@ export default function DashboardNacional() {
     if (selectedStatesNormalized.size === 0) {
       return fireHotspots;
     }
-    return fireHotspots.filter((hotspot) => selectedStatesNormalized.has(normalizeText(hotspot.name)));
+    return fireHotspots.filter((hotspot) => {
+      const hotspotName = normalizeText(hotspot.name);
+      return Array.from(selectedStatesNormalized).some((stateName) => hotspotName.includes(stateName));
+    });
   }, [fireHotspots, appliedFilters.selectedStates]);
+
+  const stateIntensity = useMemo(() => {
+    const entries = filteredTopStates.map((state) => [state.sigla, Math.round(state.risco)] as const);
+    return Object.fromEntries(entries);
+  }, [filteredTopStates]);
 
   const effectiveBiomeData = useMemo(() => {
     const applyProfile = (input: Array<{ nome: string; percentual: number; cor: string }>) =>
@@ -528,7 +536,12 @@ export default function DashboardNacional() {
               Visualização baseada em dados agregados por município/mês.
             </p>
             <div className="h-[420px] w-full rounded-3xl overflow-hidden border border-gray-200">
-              <MockBrazilMap showFire showOverlay fireHotspots={filteredFireHotspots} highlight={null} />
+              <MockBrazilMap
+                showFire
+                fireHotspots={filteredFireHotspots}
+                stateIntensity={stateIntensity}
+                highlight={null}
+              />
             </div>
           </div>
 

@@ -35,6 +35,41 @@ _STATE_COORDINATES: dict[str, tuple[float, float]] = {
     "TOCANTINS": (-10.30, -48.30),
 }
 
+_STATE_DISPLAY_PT_BR: dict[str, str] = {
+    "ACRE": "Acre",
+    "ALAGOAS": "Alagoas",
+    "AMAPA": "Amapá",
+    "AMAZONAS": "Amazonas",
+    "BAHIA": "Bahia",
+    "CEARA": "Ceará",
+    "DISTRITO FEDERAL": "Distrito Federal",
+    "ESPIRITO SANTO": "Espírito Santo",
+    "GOIAS": "Goiás",
+    "MARANHAO": "Maranhão",
+    "MATO GROSSO": "Mato Grosso",
+    "MATO GROSSO DO SUL": "Mato Grosso do Sul",
+    "MINAS GERAIS": "Minas Gerais",
+    "PARA": "Pará",
+    "PARAIBA": "Paraíba",
+    "PARANA": "Paraná",
+    "PERNAMBUCO": "Pernambuco",
+    "PIAUI": "Piauí",
+    "RIO DE JANEIRO": "Rio de Janeiro",
+    "RIO GRANDE DO NORTE": "Rio Grande do Norte",
+    "RIO GRANDE DO SUL": "Rio Grande do Sul",
+    "RONDONIA": "Rondônia",
+    "RORAIMA": "Roraima",
+    "SANTA CATARINA": "Santa Catarina",
+    "SAO PAULO": "São Paulo",
+    "SERGIPE": "Sergipe",
+    "TOCANTINS": "Tocantins",
+}
+
+_STATE_ALIASES: dict[str, str] = {
+    "FEDERAL DISTRICT": "DISTRITO FEDERAL",
+    "DF": "DISTRITO FEDERAL",
+}
+
 
 def normalize(value: str) -> str:
     """
@@ -62,6 +97,42 @@ def normalize(value: str) -> str:
         .replace("Ú", "U")
         .replace("Ç", "C")
     )
+
+
+def canonical_state_name(value: str) -> str:
+    """
+    Padroniza nome de estado para exibicao em pt-BR.
+
+    Args:
+        value: Nome de estado em formatos variados (pt/en, com ou sem acento)
+
+    Returns:
+        Nome padronizado de estado em pt-BR para exibicao.
+        Se nao reconhecido, retorna texto corrigido e sem normalizacao forcada.
+    """
+    fixed = fix_text(value)
+    if not fixed:
+        return ""
+
+    normalized = normalize(fixed)
+    alias_target = _STATE_ALIASES.get(normalized, normalized)
+    return _STATE_DISPLAY_PT_BR.get(alias_target, fixed)
+
+
+def normalize_state_key(value: str) -> str:
+    """
+    Retorna chave normalizada sem acento para comparacao/filtros.
+
+    Args:
+        value: Nome de estado bruto
+
+    Returns:
+        Chave normalizada em caixa alta sem acento.
+    """
+    state_name = canonical_state_name(value)
+    if not state_name:
+        return ""
+    return normalize(state_name)
 
 
 def fix_text(value: str) -> str:
@@ -111,4 +182,4 @@ def state_coordinates(state_name: str) -> tuple[float, float]:
         Tupla (lat, lng) ou fallback (-15.0, -55.0) se estado nao encontrado
     """
     fallback = (-15.0, -55.0)
-    return _STATE_COORDINATES.get(normalize(state_name), fallback)
+    return _STATE_COORDINATES.get(normalize_state_key(state_name), fallback)

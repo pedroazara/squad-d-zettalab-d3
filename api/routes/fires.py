@@ -5,10 +5,9 @@ from sqlalchemy.orm import Session
 from db import get_db
 from fastapi import HTTPException, status
 
-from services.authz_service import get_current_user
 from services.region_service import get_fire_item, get_fire_point_item, list_fire_items, list_fire_point_items
 
-router = APIRouter(prefix="/fires", tags=["fires"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/fires", tags=["fires"])
 
 class FireMapItem(BaseModel):
     id: int
