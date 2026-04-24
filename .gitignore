@@ -16,7 +16,7 @@ data/interim/**
 
 # Node
 node_modules/
-dist/
+# dist/
 
 # Sistema
 .DS_Store
