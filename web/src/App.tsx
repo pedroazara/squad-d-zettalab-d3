@@ -16,6 +16,7 @@ const DashboardBiodiversidade = lazy(() => import("@/pages/DashboardBiodiversida
 const DashboardTendencias = lazy(() => import("@/pages/DashboardTendencias"));
 const DashboardOcorrencias = lazy(() => import("@/pages/DashboardOcorrencias"));
 const Educativo = lazy(() => import("@/pages/Educativo"));
+const CreatePost = lazy(() => import("@/pages/CreatePost"));
 const EducativoDetalhes = lazy(() => import("@/pages/EducativoDetalhes"));
 const Sobre = lazy(() => import("@/pages/Sobre"));
 const Metodologia = lazy(() => import("@/pages/Metodologia"));
@@ -49,6 +50,7 @@ function Router() {
         {() => <ProtectedRoute component={DashboardOcorrencias} />}
       </Route>
       <Route path={"/educativo"} component={Educativo} />
+      <Route path={"/criar-post"} component={CreatePost} />
       <Route path={"/educativo/artigo/:id"} component={EducativoDetalhes} />
       <Route path={"/sobre"} component={Sobre} />
       <Route path={"/metodologia"} component={Metodologia} />

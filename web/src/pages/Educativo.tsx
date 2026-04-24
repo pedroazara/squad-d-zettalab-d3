@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { BookOpen } from 'lucide-react';
-import { Link } from 'wouter';
+import { BookOpen, Plus } from 'lucide-react';
+import { Link, useLocation } from 'wouter';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { getEducationalContent } from '@/services/mockData';
 
 export default function Educativo() {
+  const [, setLocation] = useLocation();
   const allContent = getEducationalContent();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -27,13 +28,20 @@ export default function Educativo() {
 
       <main className="container mx-auto px-4 py-16">
         {/* Page Header */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-12 flex flex-col items-center">
           <h1 className="font-display text-4xl font-bold text-guarawatch-primary mb-4">
             Área Educativa
           </h1>
-          <p className="text-guarawatch-muted max-w-2xl mx-auto">
+          <p className="text-guarawatch-muted max-w-2xl mx-auto mb-6">
             Conteúdo educativo sobre queimadas, prevenção e biodiversidade brasileira
           </p>
+          <button
+            onClick={() => setLocation('/criar-post')}
+            className="flex items-center gap-2 px-6 py-3 bg-guarawatch-accent text-guarawatch-primary font-heading font-semibold rounded-lg hover:opacity-90 transition-opacity"
+          >
+            <Plus size={20} />
+            Criar Post
+          </button>
         </div>
 
         {/* Category Filter */}
