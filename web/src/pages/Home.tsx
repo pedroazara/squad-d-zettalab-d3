@@ -31,6 +31,7 @@ export default function Home() {
         </div>
 
         <div className="container mx-auto px-4 relative z-10 text-center">
+          <img src="/images/guarawatch-simbolo.png" alt="GuaráWatch Símbolo" className="w-72 h-72 mx-auto mb-4" />
           <h1 className="font-display text-6xl md:text-7xl font-bold mb-6 leading-tight">
             GuaráWatch
           </h1>
@@ -53,7 +54,7 @@ export default function Home() {
           </div>
 
           {/* Scroll Indicator */}
-          <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 animate-bounce">
+          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 animate-bounce">
             <ChevronDown size={32} />
           </div>
         </div>

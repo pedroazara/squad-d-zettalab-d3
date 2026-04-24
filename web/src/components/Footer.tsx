@@ -8,7 +8,7 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
           {/* Left Column - Logo & Tagline */}
           <div>
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-0 mb-2">
               <LogoBrand size="sm" />
               <span className="font-display text-lg font-bold">GuaráWatch</span>
             </div>

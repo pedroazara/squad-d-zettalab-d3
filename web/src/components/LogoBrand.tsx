@@ -6,8 +6,10 @@ interface LogoBrandProps {
 }
 
 const sizeClasses = {
-  sm: 'w-8 h-8',
-  md: 'w-10 h-10',
+  sm: 'w-32 h-32',
+  md: 'w-40 h-40',
+  lg: 'w-64 h-64',
+  xl: 'w-80 h-80',
 };
 
 export default function LogoBrand({ size = 'sm', className = '' }: LogoBrandProps) {
