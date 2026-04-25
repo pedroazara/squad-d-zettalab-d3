@@ -18,21 +18,33 @@ from services.repositories.fauna_repository import (
 
 router = APIRouter(tags=["fauna"])
 
-_ALLOWED_STATES = {
-    "BAHIA",
-    "DISTRITO FEDERAL",
-    "GOIAS",
-    "MARANHAO",
-    "MATO GROSSO",
-    "MATO GROSSO DO SUL",
-    "MINAS GERAIS",
-    "PARANA",
-    "PIAUI",
-    "RONDONIA",
-    "SAO PAULO",
-    "TOCANTINS",
-}
+def _normalize_state(value: str) -> str:
+    normalized = unicodedata.normalize("NFD", (value or "").strip())
+    normalized = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+    return normalized.upper()
 
+# Estados permitidos, já normalizados
+_ALLOWED_STATES = set(
+    _normalize_state(s) for s in [
+        "ACRE",
+        "AMAPA",
+        "AMAZONAS",
+        "BAHIA",
+        "DISTRITO FEDERAL",
+        "GOIAS",
+        "MARANHAO",
+        "MATO GROSSO",
+        "MATO GROSSO DO SUL",
+        "MINAS GERAIS",
+        "PARA",
+        "PARANA",
+        "PIAUI",
+        "RONDONIA",
+        "RORAIMA",
+        "SAO PAULO",
+        "TOCANTINS",
+    ]
+)
 
 def _normalize_state(value: str) -> str:
     normalized = unicodedata.normalize("NFD", (value or "").strip())
