@@ -1,10 +1,20 @@
 from collections import defaultdict
 import unicodedata
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-from services.ingestion.file_loaders import FaunaRecord, load_fauna_records
+from db import get_db
+from services.repositories.fauna_repository import (
+    filter_fauna_records,
+    get_fauna_biodiversity_summary,
+    get_fauna_filters,
+    get_fauna_group_distribution,
+    get_fauna_species,
+    get_fauna_state_distribution,
+    get_fauna_timeline,
+)
 
 router = APIRouter(tags=["fauna"])
 
@@ -88,6 +98,7 @@ class FaunaSpeciesItem(BaseModel):
 
 
 def _filter_records(
+    db: Session,
     estado: str | None,
     bioma: str | None,
     grupo: str | None,
@@ -95,42 +106,38 @@ def _filter_records(
     ano: int | None,
     mes: int | None,
     search: str | None,
-) -> list[FaunaRecord]:
-    search_term = (search or "").strip().lower()
-    filtered: list[FaunaRecord] = []
-
-    for row in load_fauna_records():
-        if _normalize_state(row.estado) not in _ALLOWED_STATES:
-            continue
-        if estado and row.estado.lower() != estado.lower():
-            continue
-        if bioma and row.bioma.lower() != bioma.lower():
-            continue
-        if grupo and row.grupo.lower() != grupo.lower():
-            continue
-        if status_iucn and row.status_iucn.lower() != status_iucn.lower():
-            continue
-        if ano is not None and row.ano != ano:
-            continue
-        if mes is not None and row.mes != mes:
-            continue
-        if search_term:
-            haystack = f"{row.nome_cientifico} {row.nome_popular} {row.grupo} {row.estado}"
-            if search_term not in haystack.lower():
-                continue
-        filtered.append(row)
-
-    return filtered
+    limit: int = 500,
+    offset: int = 0,
+) -> list:
+    rows = filter_fauna_records(
+        db,
+        estado=estado,
+        bioma=bioma,
+        grupo=grupo,
+        status_iucn=status_iucn,
+        ano=ano,
+        mes=mes,
+        search=search,
+        limit=limit,
+        offset=offset,
+    )
+    
+    # Filter by allowed states
+    return [row for row in rows if _normalize_state(row.estado) in _ALLOWED_STATES]
 
 
 @router.get("/filters", response_model=FaunaFilterOptions)
-def get_filters() -> FaunaFilterOptions:
-    rows = _filter_records(None, None, None, None, None, None, None)
+def get_filters(db: Session = Depends(get_db)) -> FaunaFilterOptions:
+    filters = get_fauna_filters(db)
+    
+    # Filter by allowed states
+    allowed_estados = [e for e in filters["estados"] if _normalize_state(e) in _ALLOWED_STATES]
+    
     return FaunaFilterOptions(
-        estados=sorted({row.estado for row in rows if row.estado.strip()}),
-        biomas=sorted({row.bioma for row in rows if row.bioma.strip()}),
-        grupos=sorted({row.grupo for row in rows if row.grupo.strip()}),
-        status_iucn=sorted({row.status_iucn for row in rows if row.status_iucn.strip()}),
+        estados=allowed_estados,
+        biomas=filters["biomas"],
+        grupos=filters["grupos"],
+        status_iucn=filters["status_iucn"],
     )
 
 
@@ -145,27 +152,27 @@ def list_occurrences(
     search: str | None = Query(default=None),
     limit: int = Query(default=500, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
 ) -> list[FaunaOccurrenceItem]:
-    rows = _filter_records(estado, bioma, grupo, status_iucn, ano, mes, search)
-    sliced = rows[offset : offset + limit]
+    rows = _filter_records(db, estado, bioma, grupo, status_iucn, ano, mes, search, limit, offset)
     return [
         FaunaOccurrenceItem(
-            id=offset + idx + 1,
+            id=row.id,
             nome_cientifico=row.nome_cientifico,
-            nome_popular=row.nome_popular,
-            grupo=row.grupo,
-            status_iucn=row.status_iucn,
-            bioma=row.bioma,
-            bioma_principal=row.bioma_principal,
-            habitat_afetado_pct=row.habitat_afetado_pct,
-            latitude=row.latitude,
-            longitude=row.longitude,
-            estado=row.estado,
-            ano=row.ano,
-            mes=row.mes,
-            ano_mes=row.ano_mes,
+            nome_popular=row.nome_popular or "",
+            grupo=row.grupo or "",
+            status_iucn=row.status_iucn or "",
+            bioma=row.bioma or "",
+            bioma_principal=row.bioma_principal or "",
+            habitat_afetado_pct=row.habitat_afetado_pct or 0,
+            latitude=row.latitude or 0,
+            longitude=row.longitude or 0,
+            estado=row.estado or "",
+            ano=row.ano or 0,
+            mes=row.mes or 0,
+            ano_mes=f"{row.ano or 0:04d}-{row.mes or 0:02d}",
         )
-        for idx, row in enumerate(sliced)
+        for row in rows
     ]
 
 
@@ -175,34 +182,26 @@ def get_timeline(
     estado: str | None = Query(default=None),
     bioma: str | None = Query(default=None),
     grupo: str | None = Query(default=None),
+    db: Session = Depends(get_db),
 ) -> list[FaunaTimelineItem]:
-    rows = _filter_records(estado, bioma, grupo, None, None, None, None)
-    grouped: dict[str, int] = defaultdict(int)
-
-    for row in rows:
-        key = str(row.ano) if granularity == "anual" else row.ano_mes
-        grouped[key] += 1
-
-    return [FaunaTimelineItem(periodo=periodo, ocorrencias=grouped[periodo]) for periodo in sorted(grouped.keys())]
+    timeline = get_fauna_timeline(db, granularity, estado, bioma, grupo)
+    return [FaunaTimelineItem(periodo=item["periodo"], ocorrencias=item["ocorrencias"]) for item in timeline]
 
 
 @router.get("/distribution/groups", response_model=list[FaunaGroupDistributionItem])
 def get_group_distribution(
     estado: str | None = Query(default=None),
     bioma: str | None = Query(default=None),
+    db: Session = Depends(get_db),
 ) -> list[FaunaGroupDistributionItem]:
-    rows = _filter_records(estado, bioma, None, None, None, None, None)
-    grouped: dict[str, list[FaunaRecord]] = defaultdict(list)
-    for row in rows:
-        grouped[row.grupo].append(row)
-
+    distribution = get_fauna_group_distribution(db, estado, bioma)
     return [
         FaunaGroupDistributionItem(
-            grupo=group,
-            ocorrencias=len(items),
-            media_habitat_afetado=round(sum(item.habitat_afetado_pct for item in items) / len(items), 2),
+            grupo=item["grupo"],
+            ocorrencias=item["ocorrencias"],
+            media_habitat_afetado=item["media_habitat_afetado"],
         )
-        for group, items in sorted(grouped.items(), key=lambda item: item[0])
+        for item in distribution
     ]
 
 
@@ -210,14 +209,12 @@ def get_group_distribution(
 def get_state_distribution(
     bioma: str | None = Query(default=None),
     grupo: str | None = Query(default=None),
+    db: Session = Depends(get_db),
 ) -> list[FaunaStateDistributionItem]:
-    rows = _filter_records(None, bioma, grupo, None, None, None, None)
-    grouped: dict[str, int] = defaultdict(int)
-    for row in rows:
-        grouped[row.estado] += 1
-
-    sorted_rows = sorted(grouped.items(), key=lambda item: item[1], reverse=True)
-    return [FaunaStateDistributionItem(regiao=state, ocorrencias=count) for state, count in sorted_rows]
+    distribution = get_fauna_state_distribution(db, bioma, grupo)
+    return [
+        FaunaStateDistributionItem(regiao=item["regiao"], ocorrencias=item["ocorrencias"]) for item in distribution
+    ]
 
 
 @router.get("/biodiversity/summary", response_model=FaunaBiodiversitySummary)
@@ -225,25 +222,14 @@ def get_biodiversity_summary(
     estado: str | None = Query(default=None),
     bioma: str | None = Query(default=None),
     grupo: str | None = Query(default=None),
+    db: Session = Depends(get_db),
 ) -> FaunaBiodiversitySummary:
-    rows = _filter_records(estado, bioma, grupo, None, None, None, None)
-    if not rows:
-        return FaunaBiodiversitySummary(
-            total_ocorrencias=0,
-            total_especies=0,
-            media_habitat_afetado=0,
-            por_status_iucn={},
-        )
-
-    status_counts: dict[str, int] = defaultdict(int)
-    for row in rows:
-        status_counts[row.status_iucn] += 1
-
+    summary = get_fauna_biodiversity_summary(db, estado, bioma, grupo)
     return FaunaBiodiversitySummary(
-        total_ocorrencias=len(rows),
-        total_especies=len({row.nome_cientifico for row in rows}),
-        media_habitat_afetado=round(sum(row.habitat_afetado_pct for row in rows) / len(rows), 2),
-        por_status_iucn=dict(sorted(status_counts.items(), key=lambda item: item[0])),
+        total_ocorrencias=summary["total_ocorrencias"],
+        total_especies=summary["total_especies"],
+        media_habitat_afetado=summary["media_habitat_afetado"],
+        por_status_iucn=summary["por_status_iucn"],
     )
 
 
@@ -253,30 +239,18 @@ def list_species(
     bioma: str | None = Query(default=None),
     grupo: str | None = Query(default=None),
     status_iucn: str | None = Query(default=None),
+    db: Session = Depends(get_db),
 ) -> list[FaunaSpeciesItem]:
-    rows = _filter_records(estado, bioma, grupo, status_iucn, None, None, None)
-
-    species_map: dict[str, list[FaunaRecord]] = defaultdict(list)
-    for row in rows:
-        species_map[row.nome_cientifico].append(row)
-
-    output: list[FaunaSpeciesItem] = []
-    for items in species_map.values():
-        first = items[0]
-        avg_lat = sum(item.latitude for item in items) / len(items)
-        avg_lng = sum(item.longitude for item in items) / len(items)
-        avg_habitat = sum(item.habitat_afetado_pct for item in items) / len(items)
-        output.append(
-            FaunaSpeciesItem(
-                nome_cientifico=first.nome_cientifico,
-                nome_popular=first.nome_popular,
-                grupo=first.grupo,
-                status=first.status_iucn,
-                bioma=first.bioma,
-                percentualAfetado=round(avg_habitat, 2),
-                location={"lat": round(avg_lat, 6), "lng": round(avg_lng, 6)},
-            )
+    species = get_fauna_species(db, estado, bioma, grupo, status_iucn)
+    return [
+        FaunaSpeciesItem(
+            nome_cientifico=item["nome_cientifico"],
+            nome_popular=item["nome_popular"],
+            grupo=item["grupo"],
+            status=item["status"],
+            bioma=item["bioma"],
+            percentualAfetado=item["percentualAfetado"],
+            location=item["location"],
         )
-
-    output.sort(key=lambda item: (item.nome_popular, item.nome_cientifico))
-    return output
+        for item in species
+    ]
