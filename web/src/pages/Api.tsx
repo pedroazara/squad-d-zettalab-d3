@@ -9,16 +9,12 @@ export default function Api() {
         <h1 className="font-display text-4xl font-bold text-guarawatch-primary mb-6">API</h1>
         <div className="bg-white rounded-lg shadow-sm p-8 space-y-5 text-guarawatch-text leading-relaxed">
           <p>
-            Esta secao apresenta a documentacao institucional da API do GuaraWatch. A camada de integracao ainda
-            esta em evolucao e sera publicada em versao estavel nas proximas etapas do projeto.
+            Esta secao apresenta a documentacao institucional da API do GuaraWatch. Os dashboards já consomem a API
+            autenticada do projeto para listar focos, fauna, risco e relatórios operacionais.
           </p>
           <p>
-            No estado atual, os dashboards operam com dados mockados para permitir validacao de experiencia,
-            navegacao, filtros e exportacoes em ambiente de homologacao.
-          </p>
-          <p>
-            Quando os endpoints estiverem disponiveis, aqui serao detalhados autenticacao, contratos de resposta,
-            exemplos de requisicao e limites de uso.
+            Aqui serao detalhados autenticacao, contratos de resposta, exemplos de requisicao e limites de uso para
+            consumo externo e integracoes futuras.
           </p>
         </div>
       </main>

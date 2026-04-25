@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
+import { Link } from 'wouter';
 import { createFireReport, listFireReports } from '@/services/analyticsApi';
 import { getApiErrorMessage } from '@/services/apiClient';
 import { getSessionUser } from '@/services/authApi';
@@ -22,6 +23,11 @@ export default function Contato() {
   });
 
   useEffect(() => {
+    if (!user) {
+      setReports([]);
+      return;
+    }
+
     const loadReports = async () => {
       try {
         const list = await listFireReports();
@@ -32,10 +38,18 @@ export default function Contato() {
     };
 
     void loadReports();
-  }, []);
+  }, [user]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!user) {
+      setStatus({
+        type: 'error',
+        message: 'Faca login para enviar reportes de incendio.',
+      });
+      return;
+    }
+
     setLoading(true);
     setStatus({ type: 'idle', message: '' });
 
@@ -77,6 +91,16 @@ export default function Contato() {
             <p className="leading-relaxed">
               Use este formulário para reportar focos de incêndio observados em campo.
             </p>
+            {!user && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Esta funcionalidade exige autenticacao no backend.
+                {' '}
+                <Link href="/login">
+                  <a className="font-semibold underline">Entrar agora</a>
+                </Link>
+                .
+              </div>
+            )}
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div>
                 <label className="block text-sm font-semibold mb-1" htmlFor="location">
@@ -90,6 +114,7 @@ export default function Contato() {
                   placeholder="Município, rodovia ou referência"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
                   required
+                  disabled={!user}
                 />
               </div>
 
@@ -104,6 +129,7 @@ export default function Contato() {
                   placeholder="Descreva intensidade, vegetação afetada e riscos próximos"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md min-h-28"
                   required
+                  disabled={!user}
                 />
               </div>
 
@@ -119,6 +145,7 @@ export default function Contato() {
                   placeholder="(00) 00000-0000"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
                   required
+                  disabled={!user}
                 />
               </div>
 
@@ -135,12 +162,13 @@ export default function Contato() {
                   }
                   placeholder="Opcional"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  disabled={!user}
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !user}
                 className="w-full bg-guarawatch-primary text-white font-semibold rounded-md py-2 hover:opacity-90 transition-opacity"
               >
                 {loading ? 'Enviando...' : 'Enviar reporte'}
@@ -158,7 +186,12 @@ export default function Contato() {
             <h2 className="font-heading text-xl font-semibold text-guarawatch-primary">
               Últimos reports enviados
             </h2>
-            {reports.length === 0 && (
+            {!user && (
+              <p className="text-sm text-guarawatch-muted">
+                Faca login para visualizar os reportes.
+              </p>
+            )}
+            {user && reports.length === 0 && (
               <p className="text-sm text-guarawatch-muted">Nenhum reporte encontrado.</p>
             )}
             <div className="space-y-3">

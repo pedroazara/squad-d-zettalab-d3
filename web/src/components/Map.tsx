@@ -5,11 +5,6 @@ import { cn } from '@/lib/utils';
 
 interface MockBrazilMapProps {
   className?: string;
-  highlight?: {
-    lat: number;
-    lng: number;
-    label: string;
-  } | null;
   showFire?: boolean;
   fireHotspots?: Array<{
     name: string;
@@ -33,6 +28,10 @@ interface MockBrazilMapProps {
 
 const BRAZIL_CENTER: LatLngExpression = [-14.235, -51.9253];
 const BRASIL_TILE = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const MAX_FIRE_POINTS_RENDERED = 5000;
+const MAX_FAUNA_POINTS_RENDERED = 2500;
+let geoJsonCache: any | null = null;
+let geoJsonPromise: Promise<any> | null = null;
 
 const normalizeText = (value: string) =>
   value
@@ -49,28 +48,18 @@ function getFireColor(intensity: number) {
   return '#fb923c';
 }
 
-function getStateStyleIntensity(intensity?: number) {
-  if (!intensity) {
-    return {
-      color: '#334155',
-      weight: 1,
-      fillColor: '#d1d5db',
-      fillOpacity: 0.35,
-    };
-  }
-
-  const color = getFireColor(intensity);
+function getStateStyleIntensity() {
+  // Always return neutral colors for state boundaries
   return {
     color: '#334155',
     weight: 1,
-    fillColor: color,
-    fillOpacity: 0.55,
+    fillColor: '#d1d5db',
+    fillOpacity: 0.35,
   };
 }
 
 export function MockBrazilMap({
   className,
-  highlight = null,
   showFire = true,
   fireHotspots = [],
   firePoints = [],
@@ -83,9 +72,19 @@ export function MockBrazilMap({
     let mounted = true;
 
     const loadGeoJson = async () => {
+      if (geoJsonCache) {
+        if (mounted) {
+          setGeoJsonData(geoJsonCache);
+        }
+        return;
+      }
+
+      if (!geoJsonPromise) {
+        geoJsonPromise = fetch('/maps/brazil-states.geojson').then((response) => response.json());
+      }
       try {
-        const response = await fetch('/maps/brazil-states.geojson');
-        const data = await response.json();
+        const data = await geoJsonPromise;
+        geoJsonCache = data;
         if (mounted) {
           setGeoJsonData(data);
         }
@@ -114,6 +113,22 @@ export function MockBrazilMap({
     return out;
   }, [stateIntensity]);
 
+  const sampledFirePoints = useMemo(() => {
+    if (firePoints.length <= MAX_FIRE_POINTS_RENDERED) {
+      return firePoints;
+    }
+    const stride = firePoints.length / MAX_FIRE_POINTS_RENDERED;
+    return Array.from({ length: MAX_FIRE_POINTS_RENDERED }, (_, idx) => firePoints[Math.floor(idx * stride)]);
+  }, [firePoints]);
+
+  const sampledFaunaPoints = useMemo(() => {
+    if (faunaPoints.length <= MAX_FAUNA_POINTS_RENDERED) {
+      return faunaPoints;
+    }
+    const stride = faunaPoints.length / MAX_FAUNA_POINTS_RENDERED;
+    return Array.from({ length: MAX_FAUNA_POINTS_RENDERED }, (_, idx) => faunaPoints[Math.floor(idx * stride)]);
+  }, [faunaPoints]);
+
   return (
     <div className={cn('relative h-full w-full overflow-hidden rounded-3xl border border-slate-200 bg-slate-50', className)}>
       <MapContainer
@@ -133,7 +148,7 @@ export function MockBrazilMap({
             style={(feature) => {
               const props = feature?.properties as { name?: string; sigla?: string } | undefined;
               const key = normalizeText(props?.sigla || props?.name || '');
-              return getStateStyleIntensity(stateIntensityMap[key]);
+              return getStateStyleIntensity();
             }}
             onEachFeature={(feature, layer) => {
               const props = feature.properties as { name?: string; sigla?: string };
@@ -145,7 +160,7 @@ export function MockBrazilMap({
           />
         )}
 
-        {showFire && firePoints.map((point, index) => {
+        {showFire && sampledFirePoints.map((point, index) => {
           const color = getFireColor(point.intensity);
           return (
             <CircleMarker
@@ -164,7 +179,7 @@ export function MockBrazilMap({
           );
         })}
 
-        {showFire && firePoints.length === 0 && fireHotspots.map((hotspot, index) => {
+        {showFire && sampledFirePoints.length === 0 && fireHotspots.map((hotspot, index) => {
           const radius = Math.max(4, Math.min(18, hotspot.intensity / 6));
           const color = getFireColor(hotspot.intensity);
           return (
@@ -186,7 +201,7 @@ export function MockBrazilMap({
           );
         })}
 
-        {faunaPoints.map((point, index) => (
+        {sampledFaunaPoints.map((point, index) => (
           <CircleMarker
             key={`fauna-point-${index}`}
             center={[point.lat, point.lng]}
@@ -202,23 +217,7 @@ export function MockBrazilMap({
           </CircleMarker>
         ))}
 
-        {highlight && (
-          <CircleMarker
-            center={[highlight.lat, highlight.lng]}
-            radius={8}
-            pathOptions={{
-              color: '#1d4ed8',
-              fillColor: '#2563eb',
-              fillOpacity: 0.9,
-              weight: 2,
-            }}
-          >
-            <Tooltip permanent direction="top" offset={[0, -8]}>
-              {highlight.label}
-            </Tooltip>
-          </CircleMarker>
-        )}
-      </MapContainer>
+              </MapContainer>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 py-2 text-center text-[11px] uppercase tracking-[0.2em] text-slate-600 bg-white/80">
         Mapa real do Brasil (OpenStreetMap + GeoJSON de estados)

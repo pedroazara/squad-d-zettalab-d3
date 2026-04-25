@@ -5,6 +5,9 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { LoadingProvider } from "./contexts/LoadingContext";
+import { LoadingOverlay } from "./components/LoadingOverlay";
+import { DashboardSkeleton } from "./components/skeletons/DashboardSkeleton";
 
 const NotFound = lazy(() => import("@/pages/NotFound"));
 const Home = lazy(() => import("@/pages/Home"));
@@ -68,20 +71,22 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light" switchable>
-        <TooltipProvider>
-          <Toaster />
-          <div className="min-h-screen bg-guarawatch-bg text-guarawatch-text dark:bg-slate-950 dark:text-slate-100">
-            <Suspense
-              fallback={
-                <div className="min-h-screen flex items-center justify-center bg-guarawatch-bg text-guarawatch-primary font-heading">
-                  Carregando painel...
-                </div>
-              }
-            >
-              <Router />
-            </Suspense>
-          </div>
-        </TooltipProvider>
+        <LoadingProvider>
+          <TooltipProvider>
+            <Toaster />
+            <div className="min-h-screen bg-guarawatch-bg text-guarawatch-text dark:bg-slate-950 dark:text-slate-100">
+              <Suspense
+                fallback={
+                  <div className="min-h-screen bg-guarawatch-surface">
+                    <DashboardSkeleton />
+                  </div>
+                }
+              >
+                <Router />
+              </Suspense>
+            </div>
+          </TooltipProvider>
+        </LoadingProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

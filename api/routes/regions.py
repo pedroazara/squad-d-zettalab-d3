@@ -6,7 +6,7 @@ from models.schemas import RegionSnapshot
 from services.authz_service import get_current_user
 from services.region_service import get_region_snapshot, list_region_snapshots
 
-router = APIRouter(prefix="/regions", tags=["regions"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["regions"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[RegionSnapshot])

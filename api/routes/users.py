@@ -7,7 +7,7 @@ from models.entities import User
 from models.schemas import UserAdminItem, UserAdminUpdate, UsersListResponse, UserPublic
 from services.authz_service import require_permission
 
-router = APIRouter(prefix="/users", tags=["users"])
+router = APIRouter(tags=["users"])
 
 
 @router.get("", response_model=UsersListResponse)

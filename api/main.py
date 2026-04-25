@@ -14,6 +14,10 @@ from routes.reports import router as reports_router
 from routes.risk import router as risk_router
 from routes.users import router as users_router
 
+# Temporary import for sync functionality
+from db import SessionLocal
+from services.region_service import sync_fire_points_dataset
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -48,18 +52,29 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=get_cors_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
-app.include_router(auth_router)
-app.include_router(regions_router)
-app.include_router(risk_router)
-app.include_router(fires_router)
-app.include_router(fauna_router)
-app.include_router(climate_router)
-app.include_router(reports_router)
-app.include_router(users_router)
+# Temporary sync endpoint for data reload
+@app.post("/admin/sync-fire-points")
+def sync_fire_points():
+    """Temporary endpoint to sync fire points data from CSV."""
+    try:
+        with SessionLocal() as db:
+            sync_fire_points_dataset(db)
+            return {"message": "Fire points data synced successfully"}
+    except Exception as e:
+        return {"error": str(e)}
+
+app.include_router(auth_router, prefix="/auth", tags=["auth"])
+app.include_router(climate_router, prefix="/climate", tags=["climate"])
+app.include_router(fauna_router, prefix="/fauna", tags=["fauna"])
+app.include_router(fires_router, prefix="/fires", tags=["fires"])
+app.include_router(regions_router, prefix="/regions", tags=["regions"])
+app.include_router(reports_router, prefix="/reports", tags=["reports"])
+app.include_router(risk_router, prefix="/risk", tags=["risk"])
+app.include_router(users_router, prefix="/users", tags=["users"])
 
 
 @app.get("/health", tags=["health"])

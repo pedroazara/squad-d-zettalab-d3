@@ -16,12 +16,10 @@ import Footer from '@/components/Footer';
 import FilterSidebar, { FilterPayload } from '@/components/FilterSidebar';
 import { fetchStateDashboard } from '@/services/analyticsApi';
 import { getApiErrorMessage } from '@/services/apiClient';
-import {
-  getStateData,
-  getStateHistoricalData,
-  getStateFireDistribution,
-} from '@/services/mockData';
-import { exportMockCsv, exportMockPdf } from '@/lib/exportUtils';
+import { exportCsvReport, exportPdfReport, type ExportScope } from '@/lib/exportUtils';
+import { getAreaScale } from '@/lib/utils';
+import { PaginatedCitiesTable } from '@/components/PaginatedCitiesTable';
+import type { StateDashboardPayload } from '@/types/api';
 
 const stateCodeToLabel: Record<string, string> = {
   AC: 'Acre',
@@ -83,11 +81,29 @@ const monthlyTickFormatter = (value: string) => {
   return `${month}/${year.slice(-2)}`;
 };
 
+const buildEmptyStateData = (stateCode: string): StateDashboardPayload => ({
+  nome: stateCodeToLabel[stateCode] || stateCode,
+  sigla: stateCode,
+  bioma: '-',
+  risco: 0,
+  areaQueimada: 0,
+  focosCalor: 0,
+  frpMedio: 0,
+  municipiosAfetados: 0,
+  mesesMonitorados: 0,
+  ultimoPeriodo: '',
+  cidadesAfetadas: [],
+  municipios: [],
+  seasonalityData: [],
+  historicalData: [],
+  availableStates: [],
+});
+
 export default function DashboardEstados() {
   const params = useParams<{ sigla?: string }>();
   const initialStateCode = params.sigla?.toUpperCase() || 'MT';
   const [appliedFilters, setAppliedFilters] = useState<FilterPayload>({
-    yearRange: [2019, 2025],
+    yearRange: [2020, 2026],
     selectedBiomas: [],
     selectedStates: [stateCodeToLabel[initialStateCode] || 'Mato Grosso'],
     selectedState: stateCodeToLabel[initialStateCode] || 'Mato Grosso',
@@ -97,15 +113,13 @@ export default function DashboardEstados() {
   const selectedStateCode =
     stateLabelToCode[normalize(appliedFilters.selectedState || '')] || initialStateCode;
 
-  const [stateData, setStateData] = useState(() => getStateData(initialStateCode));
-  const [seasonalityData, setSeasonalityData] = useState<Array<{ mes?: string; periodo?: string; area: number }>>(() =>
-    getStateFireDistribution(initialStateCode, granularity)
-  );
-  const [historicalData, setHistoricalData] = useState(() =>
-    getStateHistoricalData(initialStateCode, granularity)
-  );
+  const [stateData, setStateData] = useState<StateDashboardPayload>(() => buildEmptyStateData(initialStateCode));
+  const [seasonalityData, setSeasonalityData] = useState<Array<{ mes?: string; periodo?: string; area: number }>>([]);
+  const [historicalData, setHistoricalData] = useState<Array<{ periodo: string; score: number }>>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const maxSeasonalityAreaHa = seasonalityData.reduce((max, entry) => Math.max(max, entry.area), 0);
+  const seasonalityScale = getAreaScale(maxSeasonalityAreaHa);
 
   useEffect(() => {
     if (params.sigla) {
@@ -128,21 +142,13 @@ export default function DashboardEstados() {
           appliedFilters.yearRange[1],
         ]);
         setStateData(response);
-        setSeasonalityData(
-          response.seasonalityData.length > 0
-            ? response.seasonalityData
-            : getStateFireDistribution(selectedStateCode, granularity)
-        );
-        setHistoricalData(
-          response.historicalData.length > 0
-            ? response.historicalData
-            : getStateHistoricalData(selectedStateCode, granularity)
-        );
+        setSeasonalityData(response.seasonalityData);
+        setHistoricalData(response.historicalData);
       } catch (error) {
         setLoadError(getApiErrorMessage(error));
-        setStateData(getStateData(selectedStateCode));
-        setSeasonalityData(getStateFireDistribution(selectedStateCode, granularity));
-        setHistoricalData(getStateHistoricalData(selectedStateCode, granularity));
+        setStateData(buildEmptyStateData(selectedStateCode));
+        setSeasonalityData([]);
+        setHistoricalData([]);
       } finally {
         setLoading(false);
       }
@@ -151,12 +157,44 @@ export default function DashboardEstados() {
     void loadStateData();
   }, [selectedStateCode, granularity, appliedFilters.yearRange]);
 
-  const handleExportPdf = (filters: FilterPayload) => {
-    exportMockPdf(`Painel Estadual-${stateData.sigla}`, filters);
+  const handleExportPdf = (filters: FilterPayload, scope: ExportScope) => {
+    exportPdfReport({
+      pageName: `Painel Estadual-${stateData.sigla}`,
+      filters,
+      scope,
+      summaryLines: [
+        `${stateData.focosCalor} foco(s) no recorte aplicado.`,
+        `${stateData.municipiosAfetados} cidade(s) afetada(s).`,
+        stateData.ultimoPeriodo ? `Último período com registro: ${stateData.ultimoPeriodo}.` : 'Sem período disponível.',
+      ],
+      rows: stateData.municipios.map((municipio) => ({
+        cidade: municipio.nome,
+        focos: municipio.focos,
+        risco: municipio.risco,
+        bioma: municipio.bioma,
+        area_estimada_ha: municipio.areaQueimada,
+      })),
+    });
   };
 
-  const handleExportCsv = (filters: FilterPayload) => {
-    exportMockCsv(`Painel Estadual-${stateData.sigla}`, filters);
+  const handleExportCsv = (filters: FilterPayload, scope: ExportScope) => {
+    exportCsvReport({
+      pageName: `Painel Estadual-${stateData.sigla}`,
+      filters,
+      scope,
+      summaryLines: [
+        `${stateData.focosCalor} foco(s) no recorte aplicado.`,
+        `${stateData.municipiosAfetados} cidade(s) afetada(s).`,
+        stateData.ultimoPeriodo ? `Último período com registro: ${stateData.ultimoPeriodo}.` : 'Sem período disponível.',
+      ],
+      rows: stateData.municipios.map((municipio) => ({
+        cidade: municipio.nome,
+        focos: municipio.focos,
+        risco: municipio.risco,
+        bioma: municipio.bioma,
+        area_estimada_ha: municipio.areaQueimada,
+      })),
+    });
   };
 
   const getRiskBadgeClass = (risco: number) => {
@@ -172,17 +210,22 @@ export default function DashboardEstados() {
 
       <div className="flex">
         <FilterSidebar
+          availableStates={
+            stateData.availableStates.length > 0
+              ? stateData.availableStates.map((state) => state.nome)
+              : [stateCodeToLabel[initialStateCode] || 'Mato Grosso']
+          }
+          recordCount={stateData.focosCalor}
           initialFilters={appliedFilters}
           onApplyFilters={(filters) => setAppliedFilters(filters)}
           onClearFilters={() =>
-            setAppliedFilters((prev) => ({
-              ...prev,
-              yearRange: [2019, 2025],
+            setAppliedFilters({
+              yearRange: [2020, 2026],
               selectedBiomas: [],
               selectedStates: [stateCodeToLabel[initialStateCode] || 'Mato Grosso'],
               selectedState: stateCodeToLabel[initialStateCode] || 'Mato Grosso',
               selectedRisks: [],
-            }))
+            })
           }
           onExportPdf={handleExportPdf}
           onExportCsv={handleExportCsv}
@@ -196,7 +239,7 @@ export default function DashboardEstados() {
             )}
             {loadError && (
               <p className="text-sm text-amber-700 mb-2">
-                Falha ao carregar backend ({loadError}). Exibindo dados de contingência.
+                Falha ao carregar backend ({loadError}).
               </p>
             )}
             <div className="flex items-center gap-4 mb-4">
@@ -260,30 +303,24 @@ export default function DashboardEstados() {
             </div>
           </div>
 
-          {/* Climate Indicators */}
+          {/* State Indicators */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <div className="bg-white rounded-lg p-4 shadow-sm">
-              <p className="text-xs text-guarawatch-muted mb-1">Temperatura Média</p>
+              <p className="text-xs text-guarawatch-muted mb-1">Focos no período</p>
               <p className="font-mono text-2xl font-bold text-guarawatch-text">
-                {stateData.temperatura}°C
+                {stateData.focosCalor.toLocaleString('pt-BR')}
               </p>
             </div>
             <div className="bg-white rounded-lg p-4 shadow-sm">
-              <p className="text-xs text-guarawatch-muted mb-1">Umidade Relativa</p>
+              <p className="text-xs text-guarawatch-muted mb-1">FRP médio</p>
               <p className="font-mono text-2xl font-bold text-guarawatch-text">
-                {stateData.umidade}%
+                {stateData.frpMedio}
               </p>
             </div>
             <div className="bg-white rounded-lg p-4 shadow-sm">
-              <p className="text-xs text-guarawatch-muted mb-1">Precipitação Anual</p>
+              <p className="text-xs text-guarawatch-muted mb-1">Meses monitorados</p>
               <p className="font-mono text-2xl font-bold text-guarawatch-text">
-                {stateData.precipitacao}mm
-              </p>
-            </div>
-            <div className="bg-white rounded-lg p-4 shadow-sm">
-              <p className="text-xs text-guarawatch-muted mb-1">Rajada Máxima</p>
-              <p className="font-mono text-2xl font-bold text-guarawatch-text">
-                {stateData.vento} km/h
+                {stateData.mesesMonitorados.toLocaleString('pt-BR')}
               </p>
             </div>
           </div>
@@ -347,69 +384,33 @@ export default function DashboardEstados() {
                     textAnchor={granularity === 'mensal' ? 'end' : 'middle'}
                     height={granularity === 'mensal' ? 56 : undefined}
                   />
-                  <YAxis />
-                  <Tooltip />
+                  <YAxis
+                    tickFormatter={(value) =>
+                      typeof value === 'number'
+                        ? (value / seasonalityScale.divisor).toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+                        : String(value)
+                    }
+                  />
+                  <Tooltip
+                    formatter={(value, name) => {
+                      if (name === 'Área Queimada') {
+                        return [`${(Number(value) / seasonalityScale.divisor).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ${seasonalityScale.label}`, 'Área Queimada'];
+                      }
+                      return [String(value), String(name)];
+                    }}
+                  />
                   <Bar
                     dataKey="area"
                     fill="#F0AD4E"
-                    name="Área Queimada (ha)"
+                    name="Área Queimada"
                   />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          {/* Critical Municipalities */}
-          <div className="bg-white rounded-lg p-6 shadow-sm">
-            <h2 className="font-heading text-lg font-semibold text-guarawatch-primary mb-4">
-              Municípios Críticos
-            </h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b-2 border-guarawatch-primary">
-                  <tr>
-                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">
-                      Município
-                    </th>
-                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">
-                      Área Queimada
-                    </th>
-                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">
-                      Bioma
-                    </th>
-                    <th className="text-left py-3 px-4 font-heading font-semibold text-guarawatch-primary">
-                      Score de Risco
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stateData.municipios.map((municipio: any, idx: number) => (
-                    <tr
-                      key={idx}
-                      className="border-b border-gray-200 hover:bg-guarawatch-bg transition-colors"
-                    >
-                      <td className="py-3 px-4 font-heading font-semibold text-guarawatch-primary">
-                        {municipio.nome}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-guarawatch-text">
-                        {(municipio.areaQueimada / 1000).toFixed(0)}k ha
-                      </td>
-                      <td className="py-3 px-4 text-guarawatch-muted">{municipio.bioma}</td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-semibold ${getRiskBadgeClass(
-                            municipio.risco
-                          )}`}
-                        >
-                          {municipio.risco}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {/* All Cities Table */}
+          <PaginatedCitiesTable cities={stateData.municipios} loading={loading} />
         </main>
       </div>
 

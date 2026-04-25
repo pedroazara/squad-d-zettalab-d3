@@ -1,7 +1,7 @@
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
 import { Link, useRoute } from 'wouter';
-import { getEducationalContent } from '@/services/mockData';
+import { getEducationalContentById } from '@/data/educationalContent';
 
 const wolfImageUrl = 'https://oeco.org.br/wp-content/uploads/oeco-migration/images/stories/abr2013/animalsemana-lobo-guara.jpg';
 const wolfGallery = [
@@ -26,7 +26,7 @@ export default function EducativoDetalhes() {
     return null;
   }
 
-  const article = getEducationalContent().find((item) => item.id === params.id);
+  const article = getEducationalContentById(params.id);
   const isWolfArticle = params.id === '2';
 
   if (!article) {
@@ -80,7 +80,7 @@ export default function EducativoDetalhes() {
                   atividade humana.
                 </p>
                 <p>
-                  No cenario mockado do sistema, os anos de 2021, 2023 e 2025 aparecem como periodos criticos para
+                  No recorte atual do sistema, os anos de 2021, 2023 e 2025 aparecem como periodos criticos para
                   a especie em regioes de Cerrado, com maior percentual de habitat afetado e maior frequencia de
                   focos de calor em corredores ecologicos.
                 </p>

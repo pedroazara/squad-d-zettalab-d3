@@ -266,36 +266,59 @@ def sync_fire_points_dataset(db: Session) -> None:
     if not records:
         return
 
-    for record in records:
-        statement = (
-            pg_insert(FirePoint)
-            .values(
-                data_hora=record.data_hora,
-                satelite=record.satelite,
-                estado=record.estado,
-                municipio=record.municipio,
-                bioma=record.bioma,
-                risco_fogo=record.risco_fogo,
-                frp=record.frp,
-                latitude=record.latitude,
-                longitude=record.longitude,
-                ano_mes=record.ano_mes,
-            )
-            .on_conflict_do_update(
-                index_elements=[FirePoint.data_hora, FirePoint.satelite, FirePoint.latitude, FirePoint.longitude],
-                set_={
-                    "estado": record.estado,
-                    "municipio": record.municipio,
-                    "bioma": record.bioma,
-                    "risco_fogo": record.risco_fogo,
-                    "frp": record.frp,
-                    "ano_mes": record.ano_mes,
-                },
-            )
+    # Clear existing data first for faster sync
+    from sqlalchemy import text
+    db.execute(text("DELETE FROM fire_points"))
+    
+    # Process in larger batches for better performance with large dataset
+    batch_size = 5000  # Increased batch size for 360,000+ records
+    total_records = len(records)
+    
+    print(f"Starting sync of {total_records} fire point records with batch size {batch_size}")
+    
+    # Memory optimization: process in chunks to avoid loading all records at once
+    import gc
+    
+    for i in range(0, total_records, batch_size):
+        batch = records[i:i + batch_size]
+        
+        # Convert records to dictionaries for bulk insert
+        batch_data = [
+            {
+                "data_hora": record.data_hora,
+                "satelite": record.satelite,
+                "estado": record.estado,
+                "municipio": record.municipio,
+                "bioma": record.bioma,
+                "risco_fogo": record.risco_fogo,
+                "frp": record.frp,
+                "latitude": record.latitude,
+                "longitude": record.longitude,
+                "ano_mes": record.ano_mes,
+            }
+            for record in batch
+        ]
+        
+        # Use bulk insert for much faster performance
+        db.execute(
+            pg_insert(FirePoint).values(batch_data)
         )
-        db.execute(statement)
-
-    db.commit()
+        
+        # Commit each batch to avoid memory issues
+        db.commit()
+        
+        # Memory cleanup: clear batch data and force garbage collection every 10 batches
+        del batch_data
+        if (i // batch_size + 1) % 10 == 0:
+            gc.collect()
+        
+        # Progress tracking with percentage
+        batch_num = i//batch_size + 1
+        total_batches = (total_records-1)//batch_size + 1
+        progress_pct = (i + len(batch)) / total_records * 100
+        print(f"Batch {batch_num}/{total_batches} ({len(batch)} records) - {progress_pct:.1f}% complete")
+    
+    print(f"✅ Completed sync of {total_records} fire point records from full dataset")
 
 
 def sync_state_risk_dataset(db: Session) -> None:
@@ -367,13 +390,20 @@ def _context_from_row(region: Region, fire_event: FireEvent) -> RegionContext:
     )
 
 
-def list_regions(db: Session, ano_mes: str | None = None) -> list[RegionContext]:
+def list_regions(
+    db: Session,
+    ano_mes: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[RegionContext]:
     query = select(Region, FireEvent).join(FireEvent, FireEvent.region_id == Region.id)
 
     if ano_mes is not None:
         query = query.where(FireEvent.ano_mes == ano_mes)
 
     query = query.order_by(FireEvent.ano_mes, Region.estado, Region.municipio)
+    if limit is not None:
+        query = query.offset(offset).limit(limit)
 
     return [_context_from_row(region, fire_event) for region, fire_event in db.execute(query).all()]
 
@@ -384,7 +414,7 @@ def list_region_snapshots(
     offset: int = 0,
     ano_mes: str | None = None,
 ) -> list[dict[str, float | int | str]]:
-    regions = list_regions(db, ano_mes)
+    regions = list_regions(db, ano_mes, limit=limit, offset=offset)
     if not regions:
         return []
 
@@ -401,7 +431,7 @@ def list_region_snapshots(
         for region in regions
     ]
 
-    return snapshots[offset : offset + limit]
+    return snapshots
 
 
 def _latest_climate_averages(db: Session) -> tuple[float | None, float | None, float | None]:

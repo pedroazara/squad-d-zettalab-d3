@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+const devApiProxyTarget = process.env.VITE_DEV_API_PROXY_TARGET || 'http://127.0.0.1:8000';
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -39,31 +41,39 @@ export default defineConfig({
     port: 4173,
     proxy: {
       '/auth': {
-        target: 'http://127.0.0.1:8000',
+        target: devApiProxyTarget,
         changeOrigin: true,
       },
       '/regions': {
-        target: 'http://127.0.0.1:8000',
+        target: devApiProxyTarget,
         changeOrigin: true,
       },
       '/risk': {
-        target: 'http://127.0.0.1:8000',
+        target: devApiProxyTarget,
         changeOrigin: true,
       },
       '/fires': {
-        target: 'http://127.0.0.1:8000',
+        target: devApiProxyTarget,
         changeOrigin: true,
       },
       '/fauna': {
-        target: 'http://127.0.0.1:8000',
+        target: devApiProxyTarget,
         changeOrigin: true,
       },
       '/reports': {
-        target: 'http://127.0.0.1:8000',
+        target: devApiProxyTarget,
+        changeOrigin: true,
+      },
+      '/users': {
+        target: devApiProxyTarget,
+        changeOrigin: true,
+      },
+      '/climate': {
+        target: devApiProxyTarget,
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://127.0.0.1:8000',
+        target: devApiProxyTarget,
         changeOrigin: true,
       },
     },

@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { SUPPORTED_DOMAIN_STATES } from '@/lib/territory';
+import type { ExportScope } from '@/lib/exportUtils';
 
 export interface FilterPayload {
   yearRange: number[];
@@ -11,14 +13,16 @@ export interface FilterPayload {
 
 interface FilterSidebarProps {
   multiStateSelection?: boolean;
+  availableStates?: string[];
+  recordCount?: number;
   initialFilters?: Partial<FilterPayload>;
   // eslint-disable-next-line no-unused-vars
   onApplyFilters?: (filters: FilterPayload) => void;
   onClearFilters?: () => void;
   // eslint-disable-next-line no-unused-vars
-  onExportPdf?: (filters: FilterPayload) => void;
+  onExportPdf?: (filters: FilterPayload, scope: ExportScope) => void;
   // eslint-disable-next-line no-unused-vars
-  onExportCsv?: (filters: FilterPayload) => void;
+  onExportCsv?: (filters: FilterPayload, scope: ExportScope) => void;
 }
 
 const biomas = [
@@ -37,14 +41,6 @@ const riskLevels = [
   { id: 'critical', label: 'Muito Alto', color: '#D9534F' },
 ];
 
-const states = [
-  'Acre', 'Alagoas', 'Amapá', 'Amazonas', 'Bahia', 'Ceará', 'Distrito Federal',
-  'Espírito Santo', 'Goiás', 'Maranhão', 'Mato Grosso', 'Mato Grosso do Sul',
-  'Minas Gerais', 'Pará', 'Paraíba', 'Paraná', 'Pernambuco', 'Piauí',
-  'Rio de Janeiro', 'Rio Grande do Norte', 'Rio Grande do Sul', 'Rondônia',
-  'Roraima', 'Santa Catarina', 'São Paulo', 'Sergipe', 'Tocantins'
-];
-
 const sectionIds = {
   year: 'filter-section-year',
   bioma: 'filter-section-bioma',
@@ -52,8 +48,8 @@ const sectionIds = {
   risk: 'filter-section-risk',
 };
 
-const YEAR_MIN = 2019;
-const YEAR_MAX = 2025;
+const YEAR_MIN = 2020;
+const YEAR_MAX = 2026;
 
 const clampYear = (value: number) => Math.min(YEAR_MAX, Math.max(YEAR_MIN, value));
 
@@ -69,12 +65,18 @@ const sanitizeYearRange = (range?: number[]) => {
 
 export default function FilterSidebar({
   multiStateSelection = false,
+  availableStates,
+  recordCount = 0,
   initialFilters,
   onApplyFilters,
   onClearFilters,
   onExportPdf,
   onExportCsv,
 }: FilterSidebarProps) {
+  const stateOptions = useMemo(
+    () => (availableStates && availableStates.length > 0 ? availableStates : SUPPORTED_DOMAIN_STATES),
+    [availableStates]
+  );
   const [yearRange, setYearRange] = useState<number[]>(sanitizeYearRange(initialFilters?.yearRange));
   const [selectedBiomas, setSelectedBiomas] = useState<string[]>(initialFilters?.selectedBiomas || []);
   const [selectedStates, setSelectedStates] = useState<string[]>(
@@ -84,12 +86,21 @@ export default function FilterSidebar({
     initialFilters?.selectedStates?.[0] || initialFilters?.selectedState || ''
   );
   const [selectedRisks, setSelectedRisks] = useState<string[]>(initialFilters?.selectedRisks || []);
+  const [exportScope, setExportScope] = useState<ExportScope>('visible');
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     year: true,
     bioma: true,
     state: true,
     risk: true,
   });
+
+  useEffect(() => {
+    setYearRange(sanitizeYearRange(initialFilters?.yearRange));
+    setSelectedBiomas(initialFilters?.selectedBiomas || []);
+    setSelectedStates(initialFilters?.selectedStates || (initialFilters?.selectedState ? [initialFilters.selectedState] : []));
+    setSelectedState(initialFilters?.selectedStates?.[0] || initialFilters?.selectedState || '');
+    setSelectedRisks(initialFilters?.selectedRisks || []);
+  }, [initialFilters]);
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) => ({
@@ -118,10 +129,10 @@ export default function FilterSidebar({
     );
   };
 
-  const allStatesSelected = selectedStates.length === states.length;
+  const allStatesSelected = stateOptions.length > 0 && selectedStates.length === stateOptions.length;
 
   const toggleAllStates = () => {
-    setSelectedStates((prev) => (prev.length === states.length ? [] : [...states]));
+    setSelectedStates((prev) => (prev.length === stateOptions.length ? [] : [...stateOptions]));
   };
 
   const getCurrentFilters = (): FilterPayload => {
@@ -146,15 +157,13 @@ export default function FilterSidebar({
   };
 
   const handleClear = () => {
-    setYearRange([2019, 2025]);
+    setYearRange([2020, 2026]);
     setSelectedBiomas([]);
     setSelectedState('');
     setSelectedStates([]);
     setSelectedRisks([]);
     onClearFilters?.();
   };
-
-  const recordCount: number = 1250; // Mock value
 
   return (
     <aside className="w-64 bg-guarawatch-bg border-r border-gray-200 p-6 sticky top-16 self-start h-[calc(100vh-4rem)] overflow-y-auto overscroll-contain">
@@ -275,7 +284,7 @@ export default function FilterSidebar({
                 role="group"
                 aria-label="Lista de estados"
               >
-                {states.map((state) => (
+                {stateOptions.map((state) => (
                   <label key={state} className="flex items-center gap-2 py-1 cursor-pointer">
                     <input
                       type="checkbox"
@@ -302,7 +311,7 @@ export default function FilterSidebar({
               aria-label="Selecionar estado"
             >
               <option value="">Selecionar estado...</option>
-              {states.map((state) => (
+              {stateOptions.map((state) => (
                 <option key={state} value={state}>
                   {state}
                 </option>
@@ -369,17 +378,28 @@ export default function FilterSidebar({
           Limpar Filtros
         </button>
         <button
-          onClick={() => onExportPdf?.(getCurrentFilters())}
+          onClick={() => onExportPdf?.(getCurrentFilters(), exportScope)}
           className="w-full px-4 py-2 bg-guarawatch-secondary text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
         >
           Exportar PDF
         </button>
         <button
-          onClick={() => onExportCsv?.(getCurrentFilters())}
+          onClick={() => onExportCsv?.(getCurrentFilters(), exportScope)}
           className="w-full px-4 py-2 border-2 border-guarawatch-secondary text-guarawatch-secondary bg-transparent rounded-lg font-medium hover:bg-guarawatch-bg transition-colors"
         >
           Exportar CSV
         </button>
+        <div>
+          <label className="block text-xs font-semibold text-guarawatch-muted mb-1">Escopo da exportação</label>
+          <select
+            value={exportScope}
+            onChange={(event) => setExportScope(event.target.value as ExportScope)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="visible">Dados visíveis/filtrados</option>
+            <option value="complete">Dataset completo</option>
+          </select>
+        </div>
       </div>
     </aside>
   );

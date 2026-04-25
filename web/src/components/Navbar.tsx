@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Menu, X, Bell, LogOut, User, Moon, Sun } from 'lucide-react';
+import { Menu, X, LogOut, User, Moon, Sun } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { clearSession } from '@/services/authApi';
 import LogoBrand from './LogoBrand';
@@ -80,16 +80,6 @@ export default function Navbar() {
               aria-label="Alternar tema"
             >
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-
-            <button
-              className="relative text-white hover:text-guarawatch-accent transition-colors"
-              aria-label="Notificações"
-            >
-              <Bell size={18} />
-              <span className="absolute -top-2 -right-2 w-4 h-4 bg-guarawatch-danger rounded-full text-[10px] flex items-center justify-center">
-                2
-              </span>
             </button>
 
             <div className="relative hidden sm:block">

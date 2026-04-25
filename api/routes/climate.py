@@ -6,7 +6,7 @@ from models.schemas import ClimateMonthlyResponse
 from services.authz_service import get_current_user
 from services.region_service import get_climate_item, list_climate_items
 
-router = APIRouter(prefix="/climate", tags=["climate"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["climate"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[ClimateMonthlyResponse])

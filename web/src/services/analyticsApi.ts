@@ -1,4 +1,5 @@
 import apiClient from '@/services/apiClient';
+import { isSupportedDomainState, normalizeLabel } from '@/lib/territory';
 import type {
   BiomeDistributionRow,
   DataGranularity,
@@ -20,6 +21,12 @@ import type {
   RegionSnapshot,
   RiskForecastResponse,
   StateDashboardPayload,
+  TrendBiomeRow,
+  TrendDashboardPayload,
+  TrendHeatmapAnnualRow,
+  TrendHeatmapSeriesRow,
+  TrendSeriesRow,
+  TrendStateRow,
 } from '@/types/api';
 
 const stateNameToCode: Record<string, string> = {
@@ -57,36 +64,6 @@ const stateCodeToName: Record<string, string> = Object.entries(stateNameToCode).
   {} as Record<string, string>
 );
 
-const stateCoordinates: Record<string, { lat: number; lng: number }> = {
-  AC: { lat: -9.02, lng: -70.81 },
-  AL: { lat: -9.57, lng: -36.78 },
-  AP: { lat: 1.41, lng: -51.77 },
-  AM: { lat: -3.07, lng: -61.66 },
-  BA: { lat: -12.7, lng: -41.7 },
-  CE: { lat: -5.2, lng: -39.5 },
-  DF: { lat: -15.78, lng: -47.93 },
-  ES: { lat: -19.19, lng: -40.34 },
-  GO: { lat: -15.9, lng: -50.14 },
-  MA: { lat: -5.42, lng: -45.44 },
-  MT: { lat: -12.64, lng: -55.42 },
-  MS: { lat: -20.51, lng: -54.54 },
-  MG: { lat: -18.1, lng: -44.38 },
-  PA: { lat: -3.79, lng: -52.48 },
-  PB: { lat: -7.24, lng: -36.78 },
-  PR: { lat: -24.89, lng: -51.55 },
-  PE: { lat: -8.38, lng: -37.86 },
-  PI: { lat: -7.72, lng: -42.73 },
-  RJ: { lat: -22.84, lng: -43.15 },
-  RN: { lat: -5.22, lng: -36.52 },
-  RS: { lat: -30.17, lng: -53.5 },
-  RO: { lat: -11.22, lng: -62.8 },
-  RR: { lat: 1.89, lng: -61.22 },
-  SC: { lat: -27.33, lng: -50.88 },
-  SP: { lat: -22.19, lng: -48.79 },
-  SE: { lat: -10.57, lng: -37.45 },
-  TO: { lat: -10.3, lng: -48.3 },
-};
-
 const biomeColorMap: Record<string, string> = {
   Cerrado: '#F0AD4E',
   Amazonia: '#5CB85C',
@@ -96,52 +73,9 @@ const biomeColorMap: Record<string, string> = {
   Pampa: '#5BC0DE',
 };
 
-const defaultBiomeDistribution: BiomeDistributionRow[] = [
-  { nome: 'Cerrado', percentual: 42, cor: '#F0AD4E' },
-  { nome: 'Amazonia', percentual: 31, cor: '#5CB85C' },
-  { nome: 'Caatinga', percentual: 12, cor: '#D4A520' },
-  { nome: 'Mata Atlantica', percentual: 8, cor: '#7CB342' },
-  { nome: 'Pantanal', percentual: 5, cor: '#00BCD4' },
-  { nome: 'Pampa', percentual: 2, cor: '#5BC0DE' },
-];
+const normalize = normalizeLabel;
 
-const normalize = (value: string) =>
-  value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .trim();
-
-const AMAZ_CERRADO_STATES = new Set([
-  'ACRE',
-  'AMAPA',
-  'AMAZONAS',
-  'BAHIA',
-  'DISTRITO FEDERAL',
-  'GOIAS',
-  'MARANHAO',
-  'MATO GROSSO',
-  'MATO GROSSO DO SUL',
-  'MINAS GERAIS',
-  'PARA',
-  'PARANA',
-  'PIAUI',
-  'RONDONIA',
-  'RORAIMA',
-  'SAO PAULO',
-  'TOCANTINS',
-]);
-
-const isInAmazCerrado = (stateName: string) => AMAZ_CERRADO_STATES.has(normalize(stateName));
-
-const parseStateFromRegionName = (regionName: string): string => {
-  const start = regionName.indexOf(' - ');
-  const end = regionName.lastIndexOf(' (');
-  if (start < 0 || end < 0 || end <= start + 3) {
-    return '';
-  }
-  return regionName.slice(start + 3, end).trim();
-};
+const isInAmazCerrado = (stateName: string) => isSupportedDomainState(stateName);
 
 const formatAnoMes = (anoMes: string, granularity: DataGranularity) => {
   const [year, month] = anoMes.split('-');
@@ -158,14 +92,26 @@ const estimateAreaByFires = (focos: number): number => {
   return Math.round(focos * 8.5);
 };
 
-const toRiskScore = (riskLabel: 'baixo' | 'medio' | 'alto') => {
-  if (riskLabel === 'baixo') {
-    return 30;
+const formatStateName = (stateName: string) =>
+  stateName
+    .toLowerCase()
+    .replace(/(^\w|\s\w)/g, (match) => match.toUpperCase());
+
+const formatPointIntensity = (point: FirePointItem) => {
+  const riskComponent = point.risco_fogo <= 1 ? point.risco_fogo * 100 : point.risco_fogo;
+  const frpComponent = Math.min(100, point.frp);
+  return Math.max(10, Math.min(100, Math.round(riskComponent * 0.7 + frpComponent * 0.3)));
+};
+
+const formatHeatmapLabel = (value: string) => {
+  const [year, month, day] = value.split('-');
+  if (day) {
+    return `${day}/${month}/${year}`;
   }
-  if (riskLabel === 'medio') {
-    return 60;
+  if (month) {
+    return `${month}/${year}`;
   }
-  return 85;
+  return value;
 };
 
 export const fetchRegions = async () => {
@@ -266,11 +212,11 @@ export const fetchFaunaSpecies = async (params?: {
 };
 
 const PAGE_SIZE = 1000;
-
-const parseAnoMesFromName = (value: string): string | null => {
-  const match = value.match(/\((\d{4}-\d{2})\)$/);
-  return match ? match[1] : null;
-};
+const MAX_PAGES = 400;
+const YEARLY_SAMPLE_LIMIT = 10_000;
+const FIRE_POINTS_CACHE_TTL_MS = 5 * 60 * 1000;
+let firePointsCache: { data: FirePointItem[]; expiresAt: number } | null = null;
+let firePointsInFlight: Promise<FirePointItem[]> | null = null;
 
 const inYearRange = (anoMes: string, yearRange?: [number, number]) => {
   if (!yearRange) {
@@ -282,57 +228,112 @@ const inYearRange = (anoMes: string, yearRange?: [number, number]) => {
   return year >= fromYear && year <= toYear;
 };
 
-const fetchAllFires = async () => {
-  const all: FireMapItem[] = [];
-  let offset = 0;
-  let hasMore = true;
-
-  while (hasMore) {
-    const page = await fetchFires({ limit: PAGE_SIZE, offset });
-    all.push(...page);
-    hasMore = page.length === PAGE_SIZE;
-    if (hasMore) {
-      offset += PAGE_SIZE;
-    }
+const buildSampledFirePoints = (allPoints: FirePointItem[]) => {
+  const pointsByYear = new Map<number, FirePointItem[]>();
+  for (const point of allPoints) {
+    const year = Number(point.ano_mes.slice(0, 4));
+    const bucket = pointsByYear.get(year) || [];
+    bucket.push(point);
+    pointsByYear.set(year, bucket);
   }
 
-  return all;
+  const sampled: FirePointItem[] = [];
+  pointsByYear.forEach((points) => {
+    if (points.length <= YEARLY_SAMPLE_LIMIT) {
+      sampled.push(...points);
+      return;
+    }
+
+    const stride = points.length / YEARLY_SAMPLE_LIMIT;
+    for (let i = 0; i < YEARLY_SAMPLE_LIMIT; i += 1) {
+      sampled.push(points[Math.floor(i * stride)]);
+    }
+  });
+  return sampled;
 };
 
-const fetchAllFirePoints = async () => {
+const fetchAllFirePointsUncached = async () => {
   const all: FirePointItem[] = [];
   let offset = 0;
-  let hasMore = true;
+  let pageCount = 0;
 
-  while (hasMore) {
-    const page = await fetchFirePoints({ limit: PAGE_SIZE, offset });
-    all.push(...page.filter((item) => isInAmazCerrado(item.estado)));
-    hasMore = page.length === PAGE_SIZE;
-    if (hasMore) {
+  try {
+    while (pageCount < MAX_PAGES) {
+      const page = await fetchFirePoints({ limit: PAGE_SIZE, offset });
+      
+      if (!page || page.length === 0) {
+        break;
+      }
+      
+      // Add bioma lookup and area_queimada estimation
+      const enhancedPage = page.map((item) => {
+        const biomaMap: Record<string, string> = {
+          'Amazonas': 'Amazônia',
+          'Pará': 'Amazônia',
+          'Acre': 'Amazônia',
+          'Rondônia': 'Amazônia',
+          'Roraima': 'Amazônia',
+          'Amapá': 'Amazônia',
+          'Tocantins': 'Cerrado',
+          'Goiás': 'Cerrado',
+          'Mato Grosso': 'Amazônia',
+          'Mato Grosso do Sul': 'Cerrado',
+          'Bahia': 'Cerrado',
+          'Maranhão': 'Amazônia',
+          'Piauí': 'Cerrado',
+          'Minas Gerais': 'Cerrado',
+          'São Paulo': 'Cerrado',
+          'Distrito Federal': 'Cerrado',
+        };
+        
+        return {
+          ...item,
+          bioma: biomaMap[item.estado] || 'Cerrado',
+          area_queimada: 1000, // Estimate burned area in hectares
+        };
+      });
+      
+      const filteredPage = enhancedPage.filter((item) => isInAmazCerrado(item.estado));
+      all.push(...filteredPage);
+      
+      if (page.length < PAGE_SIZE) {
+        break; // Last page
+      }
+      
       offset += PAGE_SIZE;
+      pageCount++;
     }
+  } catch (error) {
+    console.error('Error fetching fire points:', error);
+    // Return what we have so far
   }
 
-  return all;
+  return buildSampledFirePoints(all);
 };
 
-const fetchAllRisk = async () => {
-  const all: RiskForecastResponse[] = [];
-  let offset = 0;
-  let hasMore = true;
-
-  while (hasMore) {
-    const { data } = await apiClient.get<RiskForecastResponse[]>('/risk', {
-      params: { limit: PAGE_SIZE, offset },
-    });
-    all.push(...data);
-    hasMore = data.length === PAGE_SIZE;
-    if (hasMore) {
-      offset += PAGE_SIZE;
-    }
+export const fetchAllFirePoints = async () => {
+  const now = Date.now();
+  if (firePointsCache && firePointsCache.expiresAt > now) {
+    return firePointsCache.data;
   }
 
-  return all;
+  if (firePointsInFlight) {
+    return firePointsInFlight;
+  }
+
+  firePointsInFlight = fetchAllFirePointsUncached()
+    .then((data) => {
+      firePointsCache = {
+        data,
+        expiresAt: Date.now() + FIRE_POINTS_CACHE_TTL_MS,
+      };
+      return data;
+    })
+    .finally(() => {
+      firePointsInFlight = null;
+    });
+
+  return firePointsInFlight;
 };
 
 export const createFireReport = async (payload: FireReportCreatePayload) => {
@@ -350,13 +351,22 @@ export const fetchNationalDashboard = async (
   yearRange?: [number, number]
 ): Promise<NationalDashboardPayload> => {
   const firePoints = await fetchAllFirePoints();
+  
   const filteredPoints = firePoints.filter((item) => inYearRange(item.ano_mes, yearRange));
+
+  if (filteredPoints.length === 0) {
+    return {
+      historicalData: [],
+      topStates: [],
+      biomeDistribution: [],
+      fireHotspots: [],
+    };
+  }
 
   const groupedByPeriod = new Map<string, { points: number; riskSum: number }>();
   const groupedByState = new Map<
     string,
     {
-      points: FirePointItem[];
       focos: number;
       riskSum: number;
       biomas: Record<string, number>;
@@ -373,14 +383,12 @@ export const fetchNationalDashboard = async (
 
     const stateKey = normalize(item.estado);
     const state = groupedByState.get(stateKey) || {
-      points: [],
       focos: 0,
       riskSum: 0,
       biomas: {},
       years: {},
     };
 
-    state.points.push(item);
     state.focos += 1;
     state.riskSum += item.risco_fogo;
     state.biomas[item.bioma] = (state.biomas[item.bioma] || 0) + 1;
@@ -395,21 +403,16 @@ export const fetchNationalDashboard = async (
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([periodKey, values]) => ({
       periodo: formatAnoMes(periodKey, granularity),
-      areaQueimada: Number((estimateAreaByFires(values.points) / 1000000).toFixed(2)),
+      areaQueimada: estimateAreaByFires(values.points),
       focosCalor: values.points,
     }));
 
   const topStates: NationalStateRow[] = Array.from(groupedByState.entries())
     .map(([stateName, values]) => {
       const sigla = stateNameToCode[stateName] || stateName.slice(0, 2);
-      const nome =
-        stateCodeToName[sigla]?.toLowerCase().replace(/(^\w|\s\w)/g, (m) => m.toUpperCase()) ||
-        stateName;
+      const nome = formatStateName(stateCodeToName[sigla] || stateName);
       const dominantBiome = Object.entries(values.biomas).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Cerrado';
-      const risco =
-        values.focos > 0
-          ? Number((values.riskSum / values.focos).toFixed(1))
-          : toRiskScore('medio');
+      const risco = values.focos > 0 ? Number(((values.riskSum / values.focos) * 100).toFixed(1)) : 0;
       const years = Object.keys(values.years)
         .map((year) => Number(year))
         .sort((a, b) => a - b);
@@ -438,7 +441,7 @@ export const fetchNationalDashboard = async (
     name: `${point.municipio} - ${point.estado}`,
     lat: point.latitude,
     lng: point.longitude,
-    intensity: Math.max(10, Math.min(100, Math.round(point.risco_fogo))),
+    intensity: formatPointIntensity(point),
   }));
 
   const biomeDistributionMap = new Map<string, number>();
@@ -447,33 +450,17 @@ export const fetchNationalDashboard = async (
     biomeDistributionMap.set(biome, (biomeDistributionMap.get(biome) || 0) + 1);
   });
 
-  const biomeDistributionRows: BiomeDistributionRow[] = Array.from(biomeDistributionMap.entries()).length
-    ? Array.from(biomeDistributionMap.entries()).map(([name, count]) => ({
-        nome: name,
-        percentual: Number(((count / filteredPoints.length) * 100).toFixed(1)),
-        cor: biomeColorMap[name] || '#64748b',
-      }))
-    : defaultBiomeDistribution.map((item) => ({
-        ...item,
-        cor: biomeColorMap[item.nome] || item.cor,
-      }));
-
-  const fireHotspotsByState: FireHotspotRow[] = Array.from(groupedByState.entries()).map(([stateName, values]) => {
-    const sigla = stateNameToCode[stateName] || stateName.slice(0, 2);
-    const coord = stateCoordinates[sigla] || { lat: -15, lng: -55 };
-    return {
-      name: stateCodeToName[sigla] || stateName,
-      lat: coord.lat,
-      lng: coord.lng,
-      intensity: Math.max(10, Math.min(100, Math.round(values.riskSum / Math.max(values.focos, 1)))),
-    };
-  });
+  const biomeDistributionRows: BiomeDistributionRow[] = Array.from(biomeDistributionMap.entries()).map(([name, count]) => ({
+    nome: name,
+    percentual: Number(((count / filteredPoints.length) * 100).toFixed(1)),
+    cor: biomeColorMap[name] || '#64748b',
+  }));
 
   return {
     historicalData,
     topStates,
     biomeDistribution: biomeDistributionRows,
-    fireHotspots: fireHotspots.length > 0 ? fireHotspots : fireHotspotsByState,
+    fireHotspots,
   };
 };
 
@@ -493,13 +480,14 @@ export const fetchStateDashboard = async (
 
   const avgRisk =
     statePoints.length > 0
-      ? Number((statePoints.reduce((sum, cur) => sum + cur.risco_fogo, 0) / statePoints.length).toFixed(1))
-      : 55;
-
-  const temperature = statePoints.length > 0 ? Number((24 + avgRisk * 0.1).toFixed(1)) : 30;
-  const humidity = statePoints.length > 0 ? Number((Math.max(12, 82 - avgRisk * 0.35)).toFixed(1)) : 40;
-  const precipitation = statePoints.length > 0 ? Number((Math.max(0, 120 - avgRisk * 1.4)).toFixed(0)) : 800;
-  const wind = statePoints.length > 0 ? Number((6 + Math.min(18, focosCalor / 250)).toFixed(1)) : 12;
+      ? Number(((statePoints.reduce((sum, cur) => sum + cur.risco_fogo, 0) / statePoints.length) * 100).toFixed(1))
+      : 0;
+  const avgFrp =
+    statePoints.length > 0
+      ? Number((statePoints.reduce((sum, cur) => sum + cur.frp, 0) / statePoints.length).toFixed(1))
+      : 0;
+  const uniquePeriods = Array.from(new Set(statePoints.map((item) => item.ano_mes))).sort((a, b) => a.localeCompare(b));
+  const uniqueCities = Array.from(new Set(statePoints.map((item) => item.municipio))).sort((a, b) => a.localeCompare(b));
 
   const groupedByPeriod = new Map<string, { points: number; riskSum: number }>();
   statePoints.forEach((item) => {
@@ -514,7 +502,7 @@ export const fetchStateDashboard = async (
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([key, values]) => ({
       periodo: formatAnoMes(key, granularity),
-      score: Number((values.riskSum / Math.max(values.points, 1)).toFixed(1)),
+      score: Number(((values.riskSum / Math.max(values.points, 1)) * 100).toFixed(1)),
     }));
 
   const seasonalityData = Array.from(groupedByPeriod.entries())
@@ -529,14 +517,21 @@ export const fetchStateDashboard = async (
 
   const municipios = statePoints
     .reduce((acc, item) => {
-      const existing = acc.get(item.municipio) || { areaQueimada: 0, scoreAcc: 0, count: 0, biomas: {} as Record<string, number> };
+      const existing = acc.get(item.municipio) || {
+        areaQueimada: 0,
+        scoreAcc: 0,
+        count: 0,
+        frpAcc: 0,
+        biomas: {} as Record<string, number>,
+      };
       existing.areaQueimada += estimateAreaByFires(1);
       existing.scoreAcc += item.risco_fogo;
+      existing.frpAcc += item.frp;
       existing.count += 1;
       existing.biomas[item.bioma] = (existing.biomas[item.bioma] || 0) + 1;
       acc.set(item.municipio, existing);
       return acc;
-    }, new Map<string, { areaQueimada: number; scoreAcc: number; count: number; biomas: Record<string, number> }>())
+    }, new Map<string, { areaQueimada: number; scoreAcc: number; count: number; frpAcc: number; biomas: Record<string, number> }>())
     .entries();
 
   const municipiosRows = Array.from(municipios)
@@ -545,9 +540,9 @@ export const fetchStateDashboard = async (
       areaQueimada: values.areaQueimada,
       risco: Number((values.scoreAcc / Math.max(values.count, 1)).toFixed(1)),
       bioma: Object.entries(values.biomas).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Cerrado',
+      focos: values.count,
     }))
-    .sort((a, b) => b.risco - a.risco)
-    .slice(0, 10);
+    .sort((a, b) => b.focos - a.focos || b.risco - a.risco || a.nome.localeCompare(b.nome));
 
   const availableStates = Array.from(new Set(filteredPoints.map((item) => normalize(item.estado))))
     .map((stateName) => {
@@ -557,9 +552,7 @@ export const fetchStateDashboard = async (
       }
       return {
         sigla,
-        nome: stateName
-          .toLowerCase()
-          .replace(/(^\w|\s\w)/g, (m) => m.toUpperCase()),
+        nome: formatStateName(stateName),
       };
     })
     .filter((item): item is { sigla: string; nome: string } => Boolean(item))
@@ -575,22 +568,182 @@ export const fetchStateDashboard = async (
     : 'Cerrado';
 
   return {
-    nome:
-      stateNameUpper
-        .toLowerCase()
-        .replace(/(^\w|\s\w)/g, (m) => m.toUpperCase()) || stateCode,
+    nome: formatStateName(stateNameUpper || stateCode),
     sigla: stateCode,
     bioma: dominantBiome,
     risco: avgRisk,
     areaQueimada,
     focosCalor,
-    temperatura: temperature,
-    umidade: humidity,
-    precipitacao: precipitation,
-    vento: wind,
+    frpMedio: avgFrp,
+    municipiosAfetados: uniqueCities.length,
+    mesesMonitorados: uniquePeriods.length,
+    ultimoPeriodo: uniquePeriods[uniquePeriods.length - 1] || '',
+    cidadesAfetadas: municipiosRows.map((municipio) => ({
+      nome: municipio.nome,
+      focos: municipio.focos,
+    })),
     municipios: municipiosRows,
     seasonalityData,
     historicalData,
     availableStates,
+  };
+};
+
+export const fetchTrendDashboard = async (
+  granularity: DataGranularity,
+  yearRange?: [number, number]
+): Promise<TrendDashboardPayload> => {
+  const firePoints = await fetchAllFirePoints();
+  const filteredPoints = firePoints.filter((item) => inYearRange(item.ano_mes, yearRange));
+
+  if (filteredPoints.length === 0) {
+    return {
+      trendData: [],
+      biomeTrendData: [],
+      heatmapAnnualData: [],
+      heatmapSeriesData: [],
+      stateTrendData: [],
+      availableStates: [],
+      availableBiomes: [],
+    };
+  }
+
+  const groupedTrend = new Map<string, { count: number; riskSum: number; min: number; max: number }>();
+  const groupedBiome = new Map<string, Map<string, number[]>>();
+  const groupedDaily = new Map<string, number>();
+  const groupedState = new Map<string, Map<string, { count: number; riskSum: number }>>();
+
+  filteredPoints.forEach((point) => {
+    const periodKey =
+      granularity === 'anual'
+        ? point.ano_mes.slice(0, 4)
+        : granularity === 'mensal'
+          ? point.ano_mes
+          : point.data_hora.slice(0, 10);
+    const trendItem = groupedTrend.get(periodKey) || { count: 0, riskSum: 0, min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY };
+    trendItem.count += 1;
+    trendItem.riskSum += point.risco_fogo;
+    trendItem.min = Math.min(trendItem.min, point.risco_fogo);
+    trendItem.max = Math.max(trendItem.max, point.risco_fogo);
+    groupedTrend.set(periodKey, trendItem);
+
+    const biomeKey = point.bioma || 'Sem bioma';
+    const biomePeriod = groupedBiome.get(periodKey) || new Map<string, number[]>();
+    const biomeValues = biomePeriod.get(biomeKey) || [];
+    biomeValues.push(point.risco_fogo);
+    biomePeriod.set(biomeKey, biomeValues);
+    groupedBiome.set(periodKey, biomePeriod);
+
+    groupedDaily.set(point.ano_mes, (groupedDaily.get(point.ano_mes) || 0) + 1);
+
+    const stateName = normalize(point.estado);
+    const statePeriod = groupedState.get(stateName) || new Map<string, { count: number; riskSum: number }>();
+    const stateValues = statePeriod.get(periodKey) || { count: 0, riskSum: 0 };
+    stateValues.count += 1;
+    stateValues.riskSum += point.risco_fogo;
+    statePeriod.set(periodKey, stateValues);
+    groupedState.set(stateName, statePeriod);
+  });
+
+  const trendData: TrendSeriesRow[] = Array.from(groupedTrend.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([periodo, values]) => ({
+      periodo: granularity === 'diario' ? formatHeatmapLabel(periodo) : formatAnoMes(periodo, granularity),
+      score: Number(((values.riskSum / Math.max(values.count, 1)) * 100).toFixed(1)),
+      min: Number((values.min * 100).toFixed(1)),
+      max: Number((values.max * 100).toFixed(1)),
+    }));
+
+  const biomeKeys = Array.from(
+    filteredPoints.reduce((set, point) => {
+      set.add(point.bioma || 'Sem bioma');
+      return set;
+    }, new Set<string>())
+  ).sort((a, b) => a.localeCompare(b));
+
+  const biomeTrendData: TrendBiomeRow[] = Array.from(groupedBiome.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([periodKey, biomeMap]) => {
+      const row: TrendBiomeRow = {
+        periodo: granularity === 'diario' ? formatHeatmapLabel(periodKey) : formatAnoMes(periodKey, granularity),
+      };
+
+      biomeKeys.forEach((biome) => {
+        const values = biomeMap.get(biome) || [];
+        row[biome] = values.length > 0 ? Number(((values.reduce((sum, value) => sum + value, 0) / values.length) * 100).toFixed(1)) : 0;
+      });
+
+      return row;
+    });
+
+  const heatmapAnnualData: TrendHeatmapAnnualRow[] = Array.from(groupedDaily.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([anoMes, intensity]) => {
+      const [year, month] = anoMes.split('-');
+      return {
+        year: Number(year),
+        month,
+        intensity,
+      };
+    });
+
+  const heatmapSeriesSource =
+    granularity === 'diario'
+      ? Array.from(
+          filteredPoints.reduce((map, point) => {
+            const key = point.data_hora.slice(0, 10);
+            map.set(key, (map.get(key) || 0) + 1);
+            return map;
+          }, new Map<string, number>())
+        )
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .slice(-30)
+      : Array.from(groupedDaily.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+
+  const heatmapSeriesData: TrendHeatmapSeriesRow[] = heatmapSeriesSource.map(([periodo, intensity]) => ({
+    periodo: granularity === 'diario' ? formatHeatmapLabel(periodo) : formatAnoMes(periodo, 'mensal'),
+    intensity,
+  }));
+
+  const stateTrendData: TrendStateRow[] = Array.from(groupedState.entries())
+    .map(([stateName, periods]) => {
+      const orderedPeriods = Array.from(periods.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+      const current = orderedPeriods[orderedPeriods.length - 1]?.[1];
+      const previous = orderedPeriods[orderedPeriods.length - 2]?.[1];
+      const atual = current ? Number(((current.riskSum / Math.max(current.count, 1)) * 100).toFixed(1)) : 0;
+      const anterior = previous ? Number(((previous.riskSum / Math.max(previous.count, 1)) * 100).toFixed(1)) : 0;
+      const sigla = stateNameToCode[stateName] || stateName.slice(0, 2);
+      return {
+        sigla,
+        nome: formatStateName(stateCodeToName[sigla] || stateName),
+        atual,
+        anterior,
+        variacao: Number((atual - anterior).toFixed(1)),
+      };
+    })
+    .sort((a, b) => b.variacao - a.variacao || a.nome.localeCompare(b.nome));
+
+  const availableStates = Array.from(groupedState.keys())
+    .map((stateName) => {
+      const sigla = stateNameToCode[stateName];
+      if (!sigla) {
+        return null;
+      }
+      return {
+        sigla,
+        nome: formatStateName(stateName),
+      };
+    })
+    .filter((item): item is { sigla: string; nome: string } => Boolean(item))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+
+  return {
+    trendData,
+    biomeTrendData,
+    heatmapAnnualData,
+    heatmapSeriesData,
+    stateTrendData,
+    availableStates,
+    availableBiomes: biomeKeys,
   };
 };

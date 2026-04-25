@@ -239,7 +239,6 @@ export default function Register() {
                 <option value="coordenacao">Coordenação</option>
                 <option value="brigadista">Brigadista</option>
                 <option value="fazendeiro">Fazendeiro</option>
-                <option value="administrador">Administrador</option>
               </select>
             </div>
 
