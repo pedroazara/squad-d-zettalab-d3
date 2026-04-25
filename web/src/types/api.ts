@@ -1,4 +1,4 @@
-export type BackendRole = 'brigadista' | 'fazendeiro' | 'coordenacao' | 'administrador';
+export type BackendRole = 'brigadista' | 'fazendeiro' | 'coordenacao';
 
 export interface BackendUserPublic {
   id: number;
@@ -208,6 +208,7 @@ export interface StateMunicipalityRow {
   areaQueimada: number;
   risco: number;
   bioma: string;
+  focos: number;
 }
 
 export interface StateDashboardPayload {
@@ -217,12 +218,54 @@ export interface StateDashboardPayload {
   risco: number;
   areaQueimada: number;
   focosCalor: number;
-  temperatura: number;
-  umidade: number;
-  precipitacao: number;
-  vento: number;
+  frpMedio: number;
+  municipiosAfetados: number;
+  mesesMonitorados: number;
+  ultimoPeriodo: string;
+  cidadesAfetadas: Array<{ nome: string; focos: number }>;
   municipios: StateMunicipalityRow[];
   seasonalityData: Array<{ mes?: string; periodo?: string; area: number }>;
   historicalData: Array<{ periodo: string; score: number }>;
   availableStates: Array<{ sigla: string; nome: string }>;
+}
+
+export interface TrendSeriesRow {
+  periodo: string;
+  score: number;
+  min: number;
+  max: number;
+}
+
+export interface TrendBiomeRow {
+  periodo: string;
+  [biome: string]: string | number;
+}
+
+export interface TrendHeatmapAnnualRow {
+  year: number;
+  month: string;
+  intensity: number;
+}
+
+export interface TrendHeatmapSeriesRow {
+  periodo: string;
+  intensity: number;
+}
+
+export interface TrendStateRow {
+  sigla: string;
+  nome: string;
+  atual: number;
+  anterior: number;
+  variacao: number;
+}
+
+export interface TrendDashboardPayload {
+  trendData: TrendSeriesRow[];
+  biomeTrendData: TrendBiomeRow[];
+  heatmapAnnualData: TrendHeatmapAnnualRow[];
+  heatmapSeriesData: TrendHeatmapSeriesRow[];
+  stateTrendData: TrendStateRow[];
+  availableStates: Array<{ sigla: string; nome: string }>;
+  availableBiomes: string[];
 }

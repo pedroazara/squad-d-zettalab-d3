@@ -16,11 +16,12 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FilterSidebar, { FilterPayload } from '@/components/FilterSidebar';
 import { MockBrazilMap } from '@/components/Map';
-import { exportMockCsv, exportMockPdf } from '@/lib/exportUtils';
+import { exportCsvReport, exportPdfReport, type ExportScope } from '@/lib/exportUtils';
+import { isSupportedDomainState, normalizeLabel, SUPPORTED_DOMAIN_STATES } from '@/lib/territory';
 import {
   fetchFaunaBiodiversitySummary,
   fetchFaunaSpecies,
-  fetchFirePoints,
+  fetchAllFirePoints,
 } from '@/services/analyticsApi';
 import { getApiErrorMessage } from '@/services/apiClient';
 import type { FaunaSpeciesItem, FirePointItem } from '@/types/api';
@@ -43,37 +44,23 @@ const normalizeBiomeName = (value: string) =>
     .replace(/\b\w/g, (l) => l.toUpperCase());
 
 const normalizeState = (value: string) =>
-  value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .trim();
+  normalizeLabel(value);
 
 const ensureArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
-const PAGE_SIZE = 1000;
-const AMAZ_CERRADO_STATES = new Set([
-  'ACRE',
-  'AMAPA',
-  'AMAZONAS',
-  'BAHIA',
-  'DISTRITO FEDERAL',
-  'GOIAS',
-  'MARANHAO',
-  'MATO GROSSO',
-  'MATO GROSSO DO SUL',
-  'MINAS GERAIS',
-  'PARA',
-  'PARANA',
-  'PIAUI',
-  'RONDONIA',
-  'RORAIMA',
-  'SAO PAULO',
-  'TOCANTINS',
-]);
-
-const isInAmazCerrado = (stateName: string) => AMAZ_CERRADO_STATES.has(normalizeState(stateName));
+const isInAmazCerrado = (stateName: string) => isSupportedDomainState(stateName);
+const biomaIdToNome: Record<string, string> = {
+  cerrado: 'Cerrado',
+  amazonia: 'Amazônia',
+};
 
 export default function DashboardBiodiversidade() {
+  const [appliedFilters, setAppliedFilters] = useState<FilterPayload>({
+    yearRange: [2020, 2026],
+    selectedBiomas: [],
+    selectedStates: [],
+    selectedState: '',
+    selectedRisks: [],
+  });
   const [criticalSpecies, setCriticalSpecies] = useState<FaunaSpeciesItem[]>([]);
   const [summary, setSummary] = useState({
     total_ocorrencias: 0,
@@ -89,6 +76,8 @@ export default function DashboardBiodiversidade() {
   const [selectedAnimal, setSelectedAnimal] = useState<string>('Todos');
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(false);
+  const selectedState = appliedFilters.selectedState || appliedFilters.selectedStates[0] || undefined;
+  const selectedBiome = appliedFilters.selectedBiomas.length > 0 ? biomaIdToNome[appliedFilters.selectedBiomas[0]] : undefined;
 
   useEffect(() => {
     const loadData = async () => {
@@ -96,8 +85,14 @@ export default function DashboardBiodiversidade() {
       setLoadError('');
       try {
         const [speciesPayload, summaryPayload] = await Promise.all([
-          fetchFaunaSpecies(),
-          fetchFaunaBiodiversitySummary(),
+          fetchFaunaSpecies({
+            estado: selectedState || undefined,
+            bioma: selectedBiome || undefined,
+          }),
+          fetchFaunaBiodiversitySummary({
+            estado: selectedState || undefined,
+            bioma: selectedBiome || undefined,
+          }),
         ]);
 
         const safeSpecies = ensureArray<FaunaSpeciesItem>(speciesPayload);
@@ -138,39 +133,33 @@ export default function DashboardBiodiversidade() {
     };
 
     void loadData();
-  }, []);
+  }, [selectedBiome, selectedState]);
 
   useEffect(() => {
     const loadFirePoints = async () => {
       try {
-        const all: FirePointItem[] = [];
-        let offset = 0;
-        let hasMore = true;
-
-        while (hasMore) {
-          const payload = await fetchFirePoints({ limit: PAGE_SIZE, offset });
-          const page = ensureArray<FirePointItem>(payload);
-          all.push(...page.filter((point) => isInAmazCerrado(point.estado)));
-          hasMore = page.length === PAGE_SIZE;
-          if (hasMore) {
-            offset += PAGE_SIZE;
-          }
-        }
-
-        setFirePoints(all);
+        const all = await fetchAllFirePoints();
+        setFirePoints(
+          all.filter(
+            (point) =>
+              isInAmazCerrado(point.estado) &&
+              (!selectedState || normalizeState(point.estado) === normalizeState(selectedState)) &&
+              (!selectedBiome || normalizeBiomeName(point.bioma) === normalizeBiomeName(selectedBiome))
+          )
+        );
       } catch {
         setFirePoints([]);
       }
     };
 
     void loadFirePoints();
-  }, []);
+  }, [selectedBiome, selectedState]);
 
   const fireMapPoints = useMemo(() => {
     return firePoints.map((point) => ({
       lat: point.latitude,
       lng: point.longitude,
-      intensity: Math.max(10, Math.min(100, Math.round(point.risco_fogo))),
+      intensity: Math.max(10, Math.min(100, Math.round(point.risco_fogo <= 1 ? point.risco_fogo * 100 : point.risco_fogo))),
       label: `${point.municipio} - ${point.estado}`,
     }));
   }, [firePoints]);
@@ -327,12 +316,46 @@ export default function DashboardBiodiversidade() {
     }
   };
 
-  const handleExportPdf = (filters: FilterPayload) => {
-    exportMockPdf('Painel Biodiversidade', filters);
+  const handleExportPdf = (filters: FilterPayload, scope: ExportScope) => {
+    const exportRows = scope === 'complete' ? criticalSpecies : filteredSpecies;
+    exportPdfReport({
+      pageName: 'Painel Biodiversidade',
+      filters,
+      scope,
+      summaryLines: [
+        `${exportRows.length} espécie(s) no escopo selecionado.`,
+        `${firePoints.length} foco(s) de incêndio visíveis no mapa.`,
+      ],
+      rows: exportRows.map((species) => ({
+        nome_popular: species.nome_popular,
+        nome_cientifico: species.nome_cientifico,
+        grupo: species.grupo,
+        status: species.status,
+        bioma: species.bioma,
+        percentual_afetado: species.percentualAfetado,
+      })),
+    });
   };
 
-  const handleExportCsv = (filters: FilterPayload) => {
-    exportMockCsv('Painel Biodiversidade', filters);
+  const handleExportCsv = (filters: FilterPayload, scope: ExportScope) => {
+    const exportRows = scope === 'complete' ? criticalSpecies : filteredSpecies;
+    exportCsvReport({
+      pageName: 'Painel Biodiversidade',
+      filters,
+      scope,
+      summaryLines: [
+        `${exportRows.length} espécie(s) no escopo selecionado.`,
+        `${firePoints.length} foco(s) de incêndio visíveis no mapa.`,
+      ],
+      rows: exportRows.map((species) => ({
+        nome_popular: species.nome_popular,
+        nome_cientifico: species.nome_cientifico,
+        grupo: species.grupo,
+        status: species.status,
+        bioma: species.bioma,
+        percentual_afetado: species.percentualAfetado,
+      })),
+    });
   };
 
   return (
@@ -340,7 +363,23 @@ export default function DashboardBiodiversidade() {
       <Navbar />
 
       <div className="flex">
-        <FilterSidebar onExportPdf={handleExportPdf} onExportCsv={handleExportCsv} />
+        <FilterSidebar
+          availableStates={SUPPORTED_DOMAIN_STATES}
+          initialFilters={appliedFilters}
+          recordCount={filteredSpecies.length}
+          onApplyFilters={(filters) => setAppliedFilters(filters)}
+          onClearFilters={() =>
+            setAppliedFilters({
+              yearRange: [2020, 2026],
+              selectedBiomas: [],
+              selectedStates: [],
+              selectedState: '',
+              selectedRisks: [],
+            })
+          }
+          onExportPdf={handleExportPdf}
+          onExportCsv={handleExportCsv}
+        />
 
         <main className="flex-1 p-8">
           <h1 className="font-display text-4xl font-bold text-guarawatch-primary mb-2">
@@ -481,15 +520,6 @@ export default function DashboardBiodiversidade() {
                   showFire
                   firePoints={fireMapPoints}
                   faunaPoints={faunaMapPoints}
-                  highlight={
-                    selectedSpecies?.location
-                      ? {
-                          lat: selectedSpecies.location.lat,
-                          lng: selectedSpecies.location.lng,
-                          label: selectedSpecies.nome_popular,
-                        }
-                      : null
-                  }
                 />
               </div>
 

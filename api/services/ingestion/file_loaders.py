@@ -13,15 +13,16 @@ from .normalizers import canonical_state_name, fix_text, normalize_key
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DATA_FILE = PROJECT_ROOT / "data" / "processed" / "focos" / "focos_por_municipio_mes.csv"
-CLIMATE_FILE = PROJECT_ROOT / "data" / "processed" / "clima" / "inmet_mensal_resumo.csv"
+DATA_FILE = PROJECT_ROOT / "data" / "processed" / "focos" / "focos_consolidado.csv"
+CLIMATE_FILE = PROJECT_ROOT / "data" / "processed" / "clima" / "inmet_diario_consolidado.csv"
+CLIMATE_DAILY_FILE = PROJECT_ROOT / "data" / "processed" / "clima" / "inmet_diario_consolidado.csv"
 STATE_RISK_FILE = PROJECT_ROOT / "data" / "processed" / "risco" / "resumo_risco_estados.csv"
 SCAR_MONTHLY_FILE = PROJECT_ROOT / "data" / "processed" / "cicatriz" / "cicatriz_fogo_mensal.csv"
 SCAR_ANNUAL_FILE = PROJECT_ROOT / "data" / "processed" / "cicatriz" / "cicatriz_fogo_anual.csv"
 PASTURE_RISK_FILE = PROJECT_ROOT / "data" / "processed" / "pastagem" / "pastagem_risco.csv"
 RISK_CROSSED_FILE = PROJECT_ROOT / "data" / "processed" / "risco" / "dados_risco_cruzado.csv"
-FIRE_POINTS_FILE = PROJECT_ROOT / "data" / "interim" / "focos" / "focos_limpos_detalhados.csv"
-FIRE_POINTS_FALLBACK_FILE = PROJECT_ROOT / "data" / "processed" / "focos" / "focos_limpos_detalhados.csv"
+FIRE_POINTS_FILE = PROJECT_ROOT / "data" / "processed" / "focos" / "focos_consolidado.csv"
+FIRE_POINTS_FALLBACK_FILE = PROJECT_ROOT / "data" / "processed" / "focos" / "focos_consolidado.csv"
 FAUNA_FILE = PROJECT_ROOT / "data" / "fauna_cerrado" / "fauna_cerrado_2019.csv"
 
 
@@ -43,10 +44,31 @@ class ClimateRecord:
     ano: int
     mes: int
     estacao_codigo: str
+    estacao_nome: str
     temp_max_c: float | None
     temp_min_c: float | None
     umidade_min_pct: float | None
     precipitacao_mm: float | None
+
+
+@dataclass(frozen=True)
+class ClimateDailyRecord:
+    data: str
+    estacao_codigo: str
+    estacao_nome: str
+    latitude: float
+    longitude: float
+    altitude_m: float
+    temp_max_c: float | None
+    temp_min_c: float | None
+    temp_inst_c: float | None
+    umidade_min_pct: float | None
+    umidade_max_pct: float | None
+    umidade_inst_pct: float | None
+    precipitacao_mm: float | None
+    vento_rajada_ms: float | None
+    vento_vel_ms: float | None
+    risco_meteorologico: str
 
 
 @dataclass(frozen=True)
@@ -153,9 +175,11 @@ def load_fire_point_records() -> tuple[FirePointRecord, ...]:
         return tuple()
 
     records: list[FirePointRecord] = []
+    
     with data_path.open("r", encoding="utf-8-sig", newline="") as data_file:
         reader = csv.DictReader(data_file)
         for row in reader:
+                
             latitude = row.get("Latitude", "").strip()
             longitude = row.get("Longitude", "").strip()
             if not latitude or not longitude:
@@ -165,8 +189,8 @@ def load_fire_point_records() -> tuple[FirePointRecord, ...]:
                 FirePointRecord(
                     data_hora=row.get("DataHora", "").strip(),
                     satelite=row.get("Satelite", "").strip(),
-                    estado=canonical_state_name(row.get("Estado_Clean", row.get("Estado", ""))),
-                    municipio=fix_text(row.get("Municipio_Clean", row.get("Municipio", ""))),
+                    estado=canonical_state_name(row.get("Estado", "")),
+                    municipio=fix_text(row.get("Municipio", "")),
                     bioma=fix_text(row.get("Bioma", "")),
                     risco_fogo=parse_float(row.get("RiscoFogo", "0")),
                     frp=parse_float(row.get("FRP", "0")),
@@ -176,58 +200,186 @@ def load_fire_point_records() -> tuple[FirePointRecord, ...]:
                 )
             )
 
+    print(f"Loaded {len(records)} fire point records from full dataset")
     return tuple(records)
 
 
 @lru_cache(maxsize=1)
+def load_climate_daily_records() -> tuple[ClimateDailyRecord, ...]:
+    """Carrega dados climáticos diários com cache."""
+    if not CLIMATE_DAILY_FILE.exists():
+        return tuple()
+
+    records: list[ClimateDailyRecord] = []
+    with CLIMATE_DAILY_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
+        reader = csv.DictReader(data_file)
+        for row in reader:
+            try:
+                records.append(
+                    ClimateDailyRecord(
+                        data=row.get("data", "").strip(),
+                        estacao_codigo=row.get("estacao_codigo", "").strip(),
+                        estacao_nome=row.get("estacao_nome", "").strip(),
+                        latitude=parse_float(row.get("latitude", "0")),
+                        longitude=parse_float(row.get("longitude", "0")),
+                        altitude_m=parse_float(row.get("altitude_m", "0")),
+                        temp_max_c=parse_nullable_float(row.get("temp_max_c")),
+                        temp_min_c=parse_nullable_float(row.get("temp_min_c")),
+                        temp_inst_c=parse_nullable_float(row.get("temp_inst_c")),
+                        umidade_min_pct=parse_nullable_float(row.get("umidade_min_pct")),
+                        umidade_max_pct=parse_nullable_float(row.get("umidade_max_pct")),
+                        umidade_inst_pct=parse_nullable_float(row.get("umidade_inst_pct")),
+                        precipitacao_mm=parse_nullable_float(row.get("precipitacao_mm")),
+                        vento_rajada_ms=parse_nullable_float(row.get("vento_rajada_ms")),
+                        vento_vel_ms=parse_nullable_float(row.get("vento_vel_ms")),
+                        risco_meteorologico=row.get("risco_meteorologico", "").strip(),
+                    )
+                )
+            except (ValueError, KeyError) as e:
+                # Skip rows with invalid data
+                continue
+
+    return tuple(records)
+
+
+def parse_nullable_float(value: str) -> float | None:
+    """Converte string para float com tratamento de valores vazios."""
+    normalized_value = value.strip()
+    if not normalized_value:
+        return None
+    try:
+        return float(normalized_value)
+    except ValueError:
+        return None
+
+
+@lru_cache(maxsize=1)
 def load_records() -> tuple[FocoRecord, ...]:
-    """Carrega registros de focos por municipio/mes com cache."""
+    """Carrega registros de focos por municipio/mes com cache, agregando dados individuais do focos_consolidado.csv."""
     if not DATA_FILE.exists():
         raise FileNotFoundError(f"Arquivo de dados nao encontrado: {DATA_FILE}")
 
-    records: list[FocoRecord] = []
-
+    # Aggregate individual fire point records into monthly summaries by municipality
+    from collections import defaultdict
+    
+    aggregation_data: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
+    
     with DATA_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
         reader = csv.DictReader(data_file)
         for row in reader:
-            records.append(
-                FocoRecord(
-                    municipio=row["Municipio_Clean"].strip(),
-                    estado=canonical_state_name(row["Estado_Clean"]),
-                    ano=parse_int(row["Ano"]),
-                    mes=parse_int(row["Mes"]),
-                    ano_mes=row["AnoMes"].strip(),
-                    quantidade_focos=parse_int(row["Quantidade_Focos"]),
-                    risco_fogo_mediano=parse_float(row["RiscoFogo_Mediano"]),
-                    frp_mediano=parse_float(row["FRP_Mediano"]),
-                    bioma=row["Bioma_Predominante"].strip(),
-                )
+            key = (row["Estado"].strip(), row["Municipio"].strip(), row["AnoMes"].strip())
+            aggregation_data[key].append({
+                "risco_fogo": parse_float(row["RiscoFogo"]),
+                "frp": parse_float(row["FRP"]),
+                "bioma": row["Bioma"].strip(),
+            })
+    
+    records: list[FocoRecord] = []
+    
+    for (estado, municipio, ano_mes), fire_points in aggregation_data.items():
+        # Calculate aggregates
+        quantidade_focos = len(fire_points)
+        
+        # Calculate median values
+        riscos_fogo = sorted([fp["risco_fogo"] for fp in fire_points])
+        frps = sorted([fp["frp"] for fp in fire_points])
+        
+        risco_fogo_mediano = riscos_fogo[len(riscos_fogo) // 2] if riscos_fogo else 0.0
+        frp_mediano = frps[len(frps) // 2] if frps else 0.0
+        
+        # Get most common biome
+        bioma_counts = defaultdict(int)
+        for fp in fire_points:
+            bioma_counts[fp["bioma"]] += 1
+        bioma_predominante = max(bioma_counts.keys(), key=lambda k: bioma_counts[k]) if bioma_counts else ""
+        
+        # Extract year and month from ano_mes
+        ano = int(ano_mes.split("-")[0])
+        mes = int(ano_mes.split("-")[1])
+        
+        records.append(
+            FocoRecord(
+                municipio=municipio,
+                estado=canonical_state_name(estado),
+                ano=ano,
+                mes=mes,
+                ano_mes=ano_mes,
+                quantidade_focos=quantidade_focos,
+                risco_fogo_mediano=risco_fogo_mediano,
+                frp_mediano=frp_mediano,
+                bioma=bioma_predominante,
             )
+        )
 
     return tuple(records)
 
 
 @lru_cache(maxsize=1)
 def load_climate_records() -> tuple[ClimateRecord, ...]:
-    """Carrega dados climaticos mensais com cache."""
+    """Carrega dados climaticos mensais com cache, agregando dados diarios do inmet_diario_consolidado.csv."""
     if not CLIMATE_FILE.exists():
         return tuple()
 
-    records: list[ClimateRecord] = []
+    # Aggregate daily records into monthly summaries by station
+    from collections import defaultdict
+    
+    aggregation_data: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
+    
     with CLIMATE_FILE.open("r", encoding="utf-8-sig", newline="") as data_file:
         reader = csv.DictReader(data_file)
         for row in reader:
-            records.append(
-                ClimateRecord(
-                    ano=parse_int(row["ano"]),
-                    mes=parse_int(row["mes"]),
-                    estacao_codigo=row["estacao_codigo"].strip(),
-                    temp_max_c=parse_nullable_float(row.get("temp_max_c", "")),
-                    temp_min_c=parse_nullable_float(row.get("temp_min_c", "")),
-                    umidade_min_pct=parse_nullable_float(row.get("umidade_min_pct", "")),
-                    precipitacao_mm=parse_nullable_float(row.get("precipitacao_mm", "")),
-                )
+            data_str = row["data"].strip()
+            if not data_str:
+                continue
+            
+            # Extract year and month from date
+            try:
+                year_month = data_str[:7]  # YYYY-MM format
+                estacao_codigo = row["estacao_codigo"].strip()
+                estacao_nome = row["estacao_nome"].strip()
+                
+                key = (estacao_codigo, estacao_nome, year_month)
+                aggregation_data[key].append({
+                    "temp_max_c": parse_nullable_float(row["temp_max_c"]),
+                    "temp_min_c": parse_nullable_float(row["temp_min_c"]),
+                    "umidade_min_pct": parse_nullable_float(row["umidade_min_pct"]),
+                    "precipitacao_mm": parse_nullable_float(row["precipitacao_mm"]),
+                })
+            except (ValueError, KeyError) as e:
+                # Skip rows with invalid data
+                continue
+    
+    records: list[ClimateRecord] = []
+    
+    for (estacao_codigo, estacao_nome, year_month), daily_records in aggregation_data.items():
+        # Calculate monthly aggregates
+        temp_max_values = [dr["temp_max_c"] for dr in daily_records if dr["temp_max_c"] is not None]
+        temp_min_values = [dr["temp_min_c"] for dr in daily_records if dr["temp_min_c"] is not None]
+        umidade_min_values = [dr["umidade_min_pct"] for dr in daily_records if dr["umidade_min_pct"] is not None]
+        precipitacao_values = [dr["precipitacao_mm"] for dr in daily_records if dr["precipitacao_mm"] is not None]
+        
+        # Calculate monthly max/min/sum values
+        temp_max_c = max(temp_max_values) if temp_max_values else None
+        temp_min_c = min(temp_min_values) if temp_min_values else None
+        umidade_min_pct = min(umidade_min_values) if umidade_min_values else None
+        precipitacao_mm = sum(precipitacao_values) if precipitacao_values else None
+        
+        # Extract year and month from year_month
+        ano = int(year_month.split("-")[0])
+        mes = int(year_month.split("-")[1])
+        
+        records.append(
+            ClimateRecord(
+                estacao_codigo=estacao_codigo,
+                estacao_nome=estacao_nome,
+                ano=ano,
+                mes=mes,
+                temp_max_c=temp_max_c,
+                temp_min_c=temp_min_c,
+                umidade_min_pct=umidade_min_pct,
+                precipitacao_mm=precipitacao_mm,
             )
+        )
 
     return tuple(records)
 

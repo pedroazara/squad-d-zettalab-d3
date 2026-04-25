@@ -7,7 +7,7 @@ from models.schemas import FireReportCreate, FireReportResponse, FireReportStatu
 from services.authz_service import get_current_user, require_permission
 from services.report_service import create_fire_report, get_fire_report, list_fire_reports, update_fire_report_status
 
-router = APIRouter(prefix="/reports", tags=["reports"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["reports"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("/fire", response_model=FireReportResponse, status_code=status.HTTP_201_CREATED)

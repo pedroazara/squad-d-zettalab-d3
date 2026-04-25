@@ -6,7 +6,7 @@ from models.schemas import RiskForecastResponse
 from services.authz_service import get_current_user
 from services.region_service import get_risk_payload, list_risk_payloads
 
-router = APIRouter(prefix="/risk", tags=["risk"], dependencies=[Depends(get_current_user)])
+router = APIRouter(tags=["risk"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[RiskForecastResponse])

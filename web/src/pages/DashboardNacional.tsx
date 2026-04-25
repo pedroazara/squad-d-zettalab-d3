@@ -19,18 +19,14 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FilterSidebar, { FilterPayload } from '@/components/FilterSidebar';
 import { MockBrazilMap } from '@/components/Map';
-import { exportMockCsv, exportMockPdf } from '@/lib/exportUtils';
+import { exportCsvReport, exportPdfReport, type ExportScope } from '@/lib/exportUtils';
+import { SUPPORTED_DOMAIN_STATES } from '@/lib/territory';
+import { formatAreaHa, getAreaScale } from '@/lib/utils';
 import { fetchNationalDashboard } from '@/services/analyticsApi';
 import { getApiErrorMessage } from '@/services/apiClient';
-import {
-  getHistoricalData,
-  getTopStates,
-  getBiomeDistribution,
-  getFireHotspots,
-} from '@/services/mockData';
 
 const defaultNationalFilters: FilterPayload = {
-  yearRange: [2019, 2025],
+  yearRange: [2020, 2026],
   selectedBiomas: [],
   selectedStates: [],
   selectedState: '',
@@ -148,10 +144,10 @@ export default function DashboardNacional() {
   const initialState = useMemo(() => parseInitialNationalState(), []);
   const [granularity, setGranularity] = useState<'anual' | 'mensal'>(initialState.granularity);
   const [appliedFilters, setAppliedFilters] = useState<FilterPayload>(initialState.filters);
-  const [historicalData, setHistoricalData] = useState(() => getHistoricalData(granularity));
-  const [topStates, setTopStates] = useState(() => getTopStates());
-  const [baseBiomeData, setBaseBiomeData] = useState(() => getBiomeDistribution());
-  const [fireHotspots, setFireHotspots] = useState(() => getFireHotspots());
+  const [historicalData, setHistoricalData] = useState<Array<{ periodo: string; areaQueimada: number; focosCalor: number }>>([]);
+  const [topStates, setTopStates] = useState<Array<{ sigla: string; nome: string; bioma: string; risco: number; areaQueimada: number; focosCalor: number; variacao: number }>>([]);
+  const [baseBiomeData, setBaseBiomeData] = useState<Array<{ nome: string; percentual: number; cor: string }>>([]);
+  const [fireHotspots, setFireHotspots] = useState<Array<{ name: string; lat: number; lng: number; intensity: number }>>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
 
@@ -164,16 +160,16 @@ export default function DashboardNacional() {
           appliedFilters.yearRange[0],
           appliedFilters.yearRange[1],
         ]);
-        setHistoricalData(response.historicalData.length > 0 ? response.historicalData : getHistoricalData(granularity));
-        setTopStates(response.topStates.length > 0 ? response.topStates : getTopStates());
-        setBaseBiomeData(response.biomeDistribution.length > 0 ? response.biomeDistribution : getBiomeDistribution());
-        setFireHotspots(response.fireHotspots.length > 0 ? response.fireHotspots : getFireHotspots());
+        setHistoricalData(response.historicalData);
+        setTopStates(response.topStates);
+        setBaseBiomeData(response.biomeDistribution);
+        setFireHotspots(response.fireHotspots);
       } catch (error) {
         setLoadError(getApiErrorMessage(error));
-        setHistoricalData(getHistoricalData(granularity));
-        setTopStates(getTopStates());
-        setBaseBiomeData(getBiomeDistribution());
-        setFireHotspots(getFireHotspots());
+        setHistoricalData([]);
+        setTopStates([]);
+        setBaseBiomeData([]);
+        setFireHotspots([]);
       } finally {
         setLoading(false);
       }
@@ -246,14 +242,15 @@ export default function DashboardNacional() {
     return applyProfile(biomeDistribution);
   }, [filteredTopStates, baseBiomeData, granularity]);
 
-  const totalAreaQueimadaMha =
+  const totalAreaQueimadaHa =
     filteredTopStates.length > 0
-      ? Number((filteredTopStates.reduce((acc, item) => acc + item.areaQueimada, 0) / 1000000).toFixed(2))
-      : 3.2;
+      ? filteredTopStates.reduce((acc, item) => acc + item.areaQueimada, 0)
+      : 0;
+  const currentAreaScale = getAreaScale(totalAreaQueimadaHa);
 
   const biomeAbsoluteAreaData = effectiveBiomeData.map((item) => ({
     ...item,
-    areaMha: Number(((item.percentual / 100) * totalAreaQueimadaMha).toFixed(2)),
+    areaScaled: Number((((item.percentual / 100) * totalAreaQueimadaHa) / currentAreaScale.divisor).toFixed(2)),
   }));
 
   const statesComparisonData = filteredTopStates.map((state) => ({
@@ -265,7 +262,7 @@ export default function DashboardNacional() {
   const kpis = useMemo(() => {
     if (filteredTopStates.length === 0) {
       return [
-        { label: 'Área Queimada Total', value: '0.00M ha', variation: 'Sem dados para o recorte', variationPercent: 0, color: 'danger' as const },
+        { label: 'Área Queimada Total', value: formatAreaHa(0), variation: 'Sem dados para o recorte', variationPercent: 0, color: 'danger' as const },
         { label: 'Focos de Calor', value: '0', variation: 'Sem dados para o recorte', variationPercent: 0, color: 'warning' as const },
         { label: 'Estado Mais Afetado', value: '-', variation: 'Sem dados para o recorte', variationPercent: 0, color: 'danger' as const },
         { label: 'Bioma Mais Afetado', value: '-', variation: 'Sem dados para o recorte', variationPercent: 0, color: 'warning' as const },
@@ -285,7 +282,7 @@ export default function DashboardNacional() {
     return [
       {
         label: 'Área Queimada Total',
-        value: `${(areaTotal / 1000000).toFixed(2)}M ha`,
+        value: formatAreaHa(areaTotal),
         variation: `${filteredTopStates.length} estado(s) no recorte`,
         variationPercent: 0,
         color: 'danger' as const,
@@ -340,12 +337,47 @@ export default function DashboardNacional() {
     window.history.replaceState(null, '', nextUrl);
   }, [appliedFilters, granularity]);
 
-  const handleExportPdf = (filters: FilterPayload) => {
-    exportMockPdf('Painel Nacional', filters);
+  const handleExportPdf = (filters: FilterPayload, scope: ExportScope) => {
+    const exportRows = scope === 'complete' ? topStates : filteredTopStates;
+    exportPdfReport({
+      pageName: 'Painel Nacional',
+      filters,
+      scope,
+      summaryLines: [
+        `${exportRows.length} estado(s) no escopo selecionado.`,
+        `${filteredFireHotspots.length} foco(s) plotado(s) no mapa nacional.`,
+      ],
+      rows: exportRows.map((state) => ({
+        estado: state.nome,
+        sigla: state.sigla,
+        bioma: state.bioma,
+        risco: state.risco,
+        focos_calor: state.focosCalor,
+        area_estimada_ha: state.areaQueimada,
+        variacao_pct: state.variacao,
+      })),
+    });
   };
 
-  const handleExportCsv = (filters: FilterPayload) => {
-    exportMockCsv('Painel Nacional', filters);
+  const handleExportCsv = (filters: FilterPayload, scope: ExportScope) => {
+    const exportRows = scope === 'complete' ? topStates : filteredTopStates;
+    exportCsvReport({
+      pageName: 'Painel Nacional',
+      filters,
+      summaryLines: [
+        `${exportRows.length} estado(s) no escopo selecionado.`,
+        `${filteredFireHotspots.length} foco(s) plotado(s) no mapa nacional.`,
+      ],
+      rows: exportRows.map((state) => ({
+        estado: state.nome,
+        sigla: state.sigla,
+        bioma: state.bioma,
+        risco: state.risco,
+        focos_calor: state.focosCalor,
+        area_estimada_ha: state.areaQueimada,
+        variacao_pct: state.variacao,
+      })),
+    });
   };
 
   const getRiskBadgeClass = (risco: number) => {
@@ -362,6 +394,8 @@ export default function DashboardNacional() {
       <div className="flex">
         <FilterSidebar
           multiStateSelection
+          availableStates={topStates.length > 0 ? topStates.map((state) => state.nome) : SUPPORTED_DOMAIN_STATES}
+          recordCount={filteredFireHotspots.length}
           initialFilters={appliedFilters}
           onApplyFilters={(filters) => setAppliedFilters(filters)}
           onClearFilters={() => setAppliedFilters(defaultNationalFilters)}
@@ -383,7 +417,7 @@ export default function DashboardNacional() {
           )}
           {loadError && (
             <p className="text-sm text-amber-700 mb-4">
-              Falha ao carregar backend ({loadError}). Exibindo dados de contingência.
+              Falha ao carregar backend ({loadError}).
             </p>
           )}
 
@@ -467,16 +501,31 @@ export default function DashboardNacional() {
                     textAnchor={granularity === 'mensal' ? 'end' : 'middle'}
                     height={granularity === 'mensal' ? 56 : undefined}
                   />
-                  <YAxis yAxisId="left" />
+                  <YAxis
+                    yAxisId="left"
+                    tickFormatter={(value) =>
+                      typeof value === 'number'
+                        ? (value / currentAreaScale.divisor).toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+                        : String(value)
+                    }
+                    label={{ value: `Área Queimada (${currentAreaScale.label})`, angle: -90, position: 'insideLeft' }}
+                  />
                   <YAxis yAxisId="right" orientation="right" />
-                  <Tooltip />
+                  <Tooltip
+                    formatter={(value, name) => {
+                      if (name === 'Área Queimada') {
+                        return [formatAreaHa(Number(value)), 'Área Queimada'];
+                      }
+                      return [Number(value).toLocaleString('pt-BR'), String(name)];
+                    }}
+                  />
                   <Legend />
                   <Line
                     yAxisId="left"
                     type="monotone"
                     dataKey="areaQueimada"
                     stroke="#D9534F"
-                    name="Área Queimada (M ha)"
+                    name="Área Queimada"
                     strokeWidth={2}
                   />
                   <Line
@@ -527,24 +576,6 @@ export default function DashboardNacional() {
             </div>
           </div>
 
-          {/* Fire Map */}
-          <div className="bg-white rounded-lg p-6 shadow-sm mb-8">
-            <h2 className="font-heading text-lg font-semibold text-guarawatch-primary mb-4">
-              Mapa Nacional de Incêndios
-            </h2>
-            <p className="text-sm text-guarawatch-muted mb-4">
-              Visualização baseada em dados agregados por município/mês.
-            </p>
-            <div className="h-[420px] w-full rounded-3xl overflow-hidden border border-gray-200">
-              <MockBrazilMap
-                showFire
-                fireHotspots={filteredFireHotspots}
-                stateIntensity={stateIntensity}
-                highlight={null}
-              />
-            </div>
-          </div>
-
           {/* Additional Dashboards */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-8">
             <div className="bg-white rounded-lg p-6 shadow-sm">
@@ -575,21 +606,51 @@ export default function DashboardNacional() {
 
             <div className="bg-white rounded-lg p-6 shadow-sm">
               <h2 className="font-heading text-lg font-semibold text-guarawatch-primary mb-4">
-                Área Queimada Estimada por Bioma (M ha)
+                Área Queimada Estimada por Bioma ({currentAreaScale.label})
               </h2>
               <p className="text-sm text-guarawatch-muted mb-4">
-                Estimativa absoluta baseada na distribuição percentual dos biomas sobre 3.2 milhões de hectares.
+                Consolidação da área estimada a partir dos focos observados no recorte atual.
               </p>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={biomeAbsoluteAreaData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="nome" />
                   <YAxis />
-                  <Tooltip />
+                  <Tooltip
+                    formatter={(value, name) => {
+                      if (name === 'Área estimada') {
+                        return [`${Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ${currentAreaScale.label}`, 'Área estimada'];
+                      }
+                      return [String(value), String(name)];
+                    }}
+                  />
                   <Legend />
-                  <Bar dataKey="areaMha" fill="#2E6B3E" name="Área estimada (M ha)" />
+                  <Bar dataKey="areaScaled" fill="#2E6B3E" name="Área estimada" />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Fire Points Map */}
+          <div className="bg-white rounded-lg p-6 shadow-sm">
+            <h2 className="font-heading text-lg font-semibold text-guarawatch-primary mb-4">
+              Mapa de Focos de Incêndio
+            </h2>
+            <p className="text-sm text-guarawatch-muted mb-4">
+              Pontos georreferenciados de focos de incêndio no recorte atual.
+            </p>
+            <div className="h-[420px] rounded-2xl overflow-hidden border border-gray-200">
+              <MockBrazilMap
+                showFire={true}
+                firePoints={filteredFireHotspots.map(hotspot => ({
+                  lat: hotspot.lat,
+                  lng: hotspot.lng,
+                  intensity: hotspot.intensity,
+                  label: hotspot.name
+                }))}
+                faunaPoints={[]}
+                stateIntensity={stateIntensity}
+              />
             </div>
           </div>
 
@@ -645,7 +706,7 @@ export default function DashboardNacional() {
                         </span>
                       </td>
                       <td className="py-3 px-4 font-mono text-guarawatch-text">
-                        {(state.areaQueimada / 1000000).toFixed(2)}M ha
+                        {formatAreaHa(state.areaQueimada)}
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-1">

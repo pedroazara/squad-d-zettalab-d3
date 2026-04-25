@@ -13,8 +13,8 @@ export default function Metodologia() {
             queimada, focos de calor e sensibilidade ecologica por regiao.
           </p>
           <p>
-            Os resultados atuais sao mockados para demonstracao da experiencia do usuario e validacao de interface.
-            Na versao integrada, os calculos passarao a consumir fontes oficiais e pipelines de processamento.
+            Os resultados apresentados combinam as bases integradas de focos, fauna e clima disponiveis no projeto,
+            respeitando o recorte territorial configurado para o painel.
           </p>
           <p>
             Para garantir transparencia, cada dashboard apresenta indicadores de contexto e comparacoes historicas,

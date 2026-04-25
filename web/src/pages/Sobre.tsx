@@ -13,8 +13,8 @@ export default function Sobre() {
             prevencao, interpretacao historica e impacto sobre a biodiversidade.
           </p>
           <p>
-            Nesta fase inicial, o sistema utiliza dados mockados para demonstrar o fluxo de decisao, navegacao,
-            filtros e exportacao de informacoes. O objetivo e preparar uma base solida para evolucao com dados reais.
+            Os painéis operam com dados processados a partir das bases de focos, fauna e clima integradas ao projeto,
+            com filtros e visualizações preparados para uso direto em análise.
           </p>
           <p>
             A plataforma foi pensada para pesquisadores, orgaos publicos, equipes de resposta ambiental e para a

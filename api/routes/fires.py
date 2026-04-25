@@ -7,7 +7,7 @@ from fastapi import HTTPException, status
 
 from services.region_service import get_fire_item, get_fire_point_item, list_fire_items, list_fire_point_items
 
-router = APIRouter(prefix="/fires", tags=["fires"])
+router = APIRouter(tags=["fires"])
 
 class FireMapItem(BaseModel):
     id: int

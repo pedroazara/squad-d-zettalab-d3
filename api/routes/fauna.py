@@ -6,12 +6,9 @@ from pydantic import BaseModel
 
 from services.ingestion.file_loaders import FaunaRecord, load_fauna_records
 
-router = APIRouter(prefix="/fauna", tags=["fauna"])
+router = APIRouter(tags=["fauna"])
 
 _ALLOWED_STATES = {
-    "ACRE",
-    "AMAPA",
-    "AMAZONAS",
     "BAHIA",
     "DISTRITO FEDERAL",
     "GOIAS",
@@ -19,11 +16,9 @@ _ALLOWED_STATES = {
     "MATO GROSSO",
     "MATO GROSSO DO SUL",
     "MINAS GERAIS",
-    "PARA",
     "PARANA",
     "PIAUI",
     "RONDONIA",
-    "RORAIMA",
     "SAO PAULO",
     "TOCANTINS",
 }

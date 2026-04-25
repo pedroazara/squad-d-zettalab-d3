@@ -46,13 +46,27 @@ export const isAuthenticated = (): boolean => {
 };
 
 export const login = async (payload: UserLoginPayload): Promise<AuthResponse> => {
-  const { data } = await apiClient.post<AuthResponse>('/auth/login', payload);
-  saveSession(data.token, data.user);
-  return data;
+  console.log('login - Attempting login with:', payload.email);
+  try {
+    const { data } = await apiClient.post<AuthResponse>('/auth/login', payload);
+    console.log('login - Success, saving session');
+    saveSession(data.token, data.user);
+    return data;
+  } catch (error) {
+    console.error('login - Error:', error);
+    throw error;
+  }
 };
 
 export const register = async (payload: UserCreatePayload): Promise<AuthResponse> => {
-  const { data } = await apiClient.post<AuthResponse>('/auth/register', payload);
-  saveSession(data.token, data.user);
-  return data;
+  console.log('register - Attempting registration with:', payload.email);
+  try {
+    const { data } = await apiClient.post<AuthResponse>('/auth/register', payload);
+    console.log('register - Success, saving session');
+    saveSession(data.token, data.user);
+    return data;
+  } catch (error) {
+    console.error('register - Error:', error);
+    throw error;
+  }
 };

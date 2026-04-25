@@ -3,19 +3,13 @@ import { BookOpen } from 'lucide-react';
 import { Link } from 'wouter';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { getEducationalContent } from '@/services/mockData';
+import { getEducationalContent, getEducationalCategories } from '@/data/educationalContent';
 
 export default function Educativo() {
   const allContent = getEducationalContent();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  const categories = [
-    'Prevenção de Incêndios',
-    'Impacto Ambiental',
-    'Biodiversidade em Risco',
-    'Como Usar o Sistema',
-    'Metodologia dos Dados',
-  ];
+  const categories = getEducationalCategories();
 
   const filteredContent = selectedCategory
     ? allContent.filter((item) => item.categoria === selectedCategory)

@@ -8,7 +8,7 @@ from services.authz_service import get_current_user, has_permission, require_per
 from services.auth_service import authenticate_user, create_user, get_user_by_email
 from services.security_service import create_access_token
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter(tags=["auth"])
 
 
 @router.post(
