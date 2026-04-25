@@ -11,6 +11,7 @@ from models.entities import (
     PastureRisk,
     Region,
     RiskSnapshot,
+    FaunaOccurrence,
 )
 from services.ingestion.file_loaders import (
     FocoRecord,
@@ -22,6 +23,7 @@ from services.ingestion.file_loaders import (
     load_pasture_risk_records,
     load_records,
     load_state_risk_records,
+    load_fauna_records,
 )
 from services.ingestion.normalizers import normalize_key, state_coordinates
 from services.repositories.region_repository import (
@@ -604,3 +606,33 @@ def list_climate_items(
         records.append(build_climate_item(item, temp_media))
 
     return records
+
+def sync_fauna_dataset(db: Session) -> None:
+    # Verifica se os dados já existem para evitar duplicidade (idempotência)
+    if db.scalar(select(FaunaOccurrence.id).limit(1)) is not None:
+        return
+
+    records = load_fauna_records()
+    if not records:
+        return
+
+    db_records = [
+        FaunaOccurrence(
+            nome_cientifico=r.nome_cientifico,
+            nome_popular=r.nome_popular,
+            grupo=r.grupo,
+            status_iucn=r.status_iucn,
+            bioma=r.bioma,
+            bioma_principal=r.bioma_principal,
+            habitat_afetado_pct=r.habitat_afetado_pct,
+            latitude=r.latitude,
+            longitude=r.longitude,
+            estado=r.estado,
+            ano=r.ano,
+            mes=r.mes
+        )
+        for r in records
+    ]
+    
+    db.bulk_save_objects(db_records)
+    db.commit()

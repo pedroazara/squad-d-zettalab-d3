@@ -12,6 +12,7 @@ from services.region_service import (
     sync_foco_dataset,
     sync_pasture_risk_dataset,
     sync_state_risk_dataset,
+    sync_fauna_dataset,
 )
 
 
@@ -24,6 +25,7 @@ def _run_all_dataset_syncs(db: Session) -> None:
         ("climate", sync_climate_dataset),
         ("foco", sync_foco_dataset),
         ("state_risk", sync_state_risk_dataset),
+        ("fauna", sync_fauna_dataset),
     ]
 
     for step_name, step_fn in steps:

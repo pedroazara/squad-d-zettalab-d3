@@ -161,3 +161,21 @@ class FirePoint(Base):
     longitude: Mapped[float] = mapped_column(Float, nullable=False, index=True)
     ano_mes: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FaunaOccurrence(Base):
+    __tablename__ = "ocorrencias_fauna"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    nome_cientifico: Mapped[str] = mapped_column(String(150), nullable=False)
+    nome_popular: Mapped[str] = mapped_column(String(150), nullable=True)
+    grupo: Mapped[str] = mapped_column(String(100), nullable=True)
+    status_iucn: Mapped[str] = mapped_column(String(10), nullable=True)
+    bioma: Mapped[str] = mapped_column(String(100), nullable=True)
+    bioma_principal: Mapped[str] = mapped_column(String(100), nullable=True)
+    habitat_afetado_pct: Mapped[float] = mapped_column(Float, nullable=True)
+    latitude: Mapped[float] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float] = mapped_column(Float, nullable=True)
+    estado: Mapped[str] = mapped_column(String(50), nullable=True)
+    ano: Mapped[int] = mapped_column(Integer, nullable=True)
+    mes: Mapped[int] = mapped_column(Integer, nullable=True)
